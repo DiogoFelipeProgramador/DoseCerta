@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "DoseCerta",
+    "slug": "dosecerta",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D6B58"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.dosecerta.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0D6B58"
+      },
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.CAMERA",
+        "android.permission.USE_EXACT_ALARM"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0D6B58",
+          "sounds": [
+            "./assets/sounds/alarme_remedio.wav",
+            "./assets/sounds/alarme_remedio_longo.wav"
+          ]
+        }
+      ],
+      [
+        "expo-sqlite"
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O DoseCerta precisa de acesso às suas fotos para anexar a foto do medicamento.",
+          "cameraPermission": "O DoseCerta precisa de acesso à câmera para fotografar a caixa do medicamento."
+        }
+      ],
+      "expo-asset"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5dc47f52-70e9-45aa-92f9-1e2f5964df1d"
+      }
+    },
+    "owner": "diogofelipe"
+  }
+}
