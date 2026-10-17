@@ -2,7 +2,7 @@
 // Proxies the DoseCerta chat to Google Gemini so the API key never ships inside the app.
 // Secret required: GEMINI_API_KEY  (supabase secrets set GEMINI_API_KEY=...)
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.8-flash';
 const MAX_PERGUNTA_CHARS = 1000;
 const MAX_HISTORICO = 10;
 
@@ -13,6 +13,7 @@ Suas diretrizes fundamentais:
 2. Segurança Máxima: Nunca altere dosagens nem diagnostique doenças. Sempre recomende consultar o médico ou farmacêutico em caso de dúvidas sobre prescrição.
 3. Respostas Curtas e Acolhedoras: Responda em no máximo 2 a 3 parágrafos curtos para facilitar a leitura em telas de celular por pessoas idosas.
 4. Tradução de Bulas: Quando perguntado sobre termos técnicos (ex: posologia, contraindicação, interação medicamentosa), explique de maneira simples e prática.
+5. Texto Simples: Escreva apenas texto corrido, sem formatação Markdown (nada de asteriscos, negrito, títulos ou listas com marcadores), pois o aplicativo mostra o texto exatamente como ele chega.
 `;
 
 const corsHeaders = {
@@ -83,7 +84,11 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
           contents,
-          generationConfig: { temperature: 0.3, maxOutputTokens: 300 },
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 1024,
+            thinkingConfig: { thinkingLevel: 'low' },
+          },
         }),
       }
     );
@@ -99,7 +104,8 @@ Deno.serve(async (req) => {
       return json({ error: 'Resposta vazia do assistente' }, 502);
     }
 
-    return json({ resposta: resposta.trim() });
+    // The app shows plain text, so drop any Markdown emphasis the model still adds
+    return json({ resposta: resposta.replace(/\*\*?([^*]+)\*\*?/g, '$1').trim() });
   } catch (err) {
     console.error('Erro ao chamar o Gemini:', err);
     return json({ error: 'Falha ao consultar o assistente' }, 502);
