@@ -152,7 +152,7 @@ scripts/gerar-alarme.js      gera os sons de alarme em WAV
 # 1. Instalar dependências
 npm install
 
-# 2. (Opcional) Configurar o Supabase: copie o modelo e preencha URL e chave pública
+# 2. Configurar o Supabase (obrigatório): copie o modelo e preencha URL e chave pública
 cp .env.example .env          # macOS / Linux / Git Bash
 copy .env.example .env        # PowerShell / Prompt do Windows
 
@@ -160,9 +160,9 @@ copy .env.example .env        # PowerShell / Prompt do Windows
 npm start
 ```
 
-Sem `.env` o app roda normalmente, mas sem conta na nuvem, sem aviso ao cuidador e com o assistente em modo offline. Depois de mudar o `.env`, reinicie limpando o cache: `npx expo start -c`.
+Sem `.env` o app para logo ao abrir, em desenvolvimento, com uma mensagem dizendo o que falta. Depois de mudar o `.env`, reinicie limpando o cache: `npx expo start -c`.
 
-### Configurar o Supabase (opcional)
+### Configurar o Supabase
 
 1. Crie um projeto em [supabase.com](https://supabase.com) e rode `supabase/schema.sql` no **SQL Editor**. Pode rodar de novo a cada atualização, porque ele só cria o que ainda não existe.
 2. Em **Authentication → Sign In / Providers → Email**, desligue o **Confirm email** para testes. Com ele ligado, o link do e-mail leva para `localhost`, a menos que a **Site URL** seja configurada.

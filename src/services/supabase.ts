@@ -1,6 +1,7 @@
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, User } from '@supabase/supabase-js';
+import { PerfilUsuario } from '../types';
 import {
   getPerfilUsuario,
   getMedicamentos,
@@ -13,10 +14,26 @@ const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
 const isConfigured = Boolean(
-  SUPABASE_URL && 
-  SUPABASE_ANON_KEY && 
+  SUPABASE_URL &&
+  SUPABASE_ANON_KEY &&
   !SUPABASE_URL.includes('xyzcompany')
 );
+
+// Required config: stop right away in development so a missing .env is never mistaken for a
+// bug. A release build must not crash over it (reminders work offline), so only the account
+// stays unavailable there.
+if (!isConfigured) {
+  const aviso =
+    'Supabase não configurado: crie o arquivo .env a partir do .env.example ' +
+    '(EXPO_PUBLIC_SUPABASE_URL e EXPO_PUBLIC_SUPABASE_ANON_KEY) e reinicie com "npx expo start -c".';
+  if (__DEV__) throw new Error(aviso);
+  console.error(aviso);
+}
+
+const CONTA_INDISPONIVEL = {
+  success: false,
+  message: 'Não foi possível acessar sua conta agora. Tente novamente mais tarde.',
+};
 
 export const supabase = isConfigured
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -64,39 +81,28 @@ export const registerUserAccount = async (
       return { success: false, message: 'A senha deve conter pelo menos 6 caracteres.' };
     }
 
-    if (supabase) {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password: pass,
-        options: {
-          data: { nome: nome || '' },
-        },
-      });
+    if (!supabase) return CONTA_INDISPONIVEL;
 
-      if (error) {
-        return { success: false, message: error.message };
-      }
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        data: { nome: nome || '' },
+      },
+    });
 
-      const userId = data.user?.id || `usr-${Date.now()}`;
-      await updatePerfilUsuario({ email, nome: nome || undefined });
-      await triggerAutoSync();
-
-      return {
-        success: true,
-        message: 'Conta criada com sucesso! Seus dados foram salvos na nuvem.',
-        user: data.user,
-      };
-    } else {
-      // Modo local com conta vinculada (quando Supabase URL não foi definida no .env)
-      const userId = `usr-${Date.now()}`;
-      await updatePerfilUsuario({ email, nome: nome || undefined });
-
-      return {
-        success: true,
-        message: 'Conta registrada localmente! Seus dados estão salvos e vinculados a este email.',
-        user: { id: userId, email },
-      };
+    if (error) {
+      return { success: false, message: error.message };
     }
+
+    await updatePerfilUsuario({ email, nome: nome || undefined });
+    await triggerAutoSync();
+
+    return {
+      success: true,
+      message: 'Conta criada com sucesso! Seus dados foram salvos na nuvem.',
+      user: data.user,
+    };
   } catch (err: any) {
     console.warn('Erro ao registrar conta:', err);
     return { success: false, message: err?.message || 'Erro inesperado ao criar conta.' };
@@ -115,36 +121,59 @@ export const loginUserAccount = async (
       return { success: false, message: 'Por favor, informe email e senha.' };
     }
 
-    if (supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password: pass,
-      });
+    if (!supabase) return CONTA_INDISPONIVEL;
 
-      if (error) {
-        return { success: false, message: error.message };
-      }
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: pass,
+    });
 
-      await updatePerfilUsuario({ email });
-      await triggerAutoSync();
-
-      return {
-        success: true,
-        message: 'Login realizado com sucesso! Seus dados foram sincronizados.',
-        user: data.user,
-      };
-    } else {
-      await updatePerfilUsuario({ email });
-      return {
-        success: true,
-        message: 'Login realizado com sucesso!',
-        user: { email },
-      };
+    if (error) {
+      return { success: false, message: error.message };
     }
+
+    // Bring the saved profile first: the sync below uploads the local one and would
+    // otherwise erase the name and caregiver data saved from another device
+    await updatePerfilUsuario({ email, ...(await buscarPerfilNuvem(data.user)) });
+    await triggerAutoSync();
+
+    return {
+      success: true,
+      message: 'Login realizado com sucesso! Seus dados foram sincronizados.',
+      user: data.user,
+    };
   } catch (err: any) {
     console.warn('Erro no login:', err);
     return { success: false, message: err?.message || 'Erro inesperado ao realizar login.' };
   }
+};
+
+/**
+ * Profile fields saved in the cloud that are still empty on this device. What the user
+ * already filled in here wins. The name falls back to the one given when creating the account.
+ */
+const buscarPerfilNuvem = async (user: User): Promise<Partial<PerfilUsuario>> => {
+  if (!supabase) return {};
+  const local = await getPerfilUsuario();
+  const { data: nuvem, error } = await supabase
+    .from('perfil_usuario')
+    .select('nome, telefone_cuidador, nome_cuidador, email_cuidador, avisar_cuidador')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (error) console.log('[Conta] Não foi possível buscar o perfil salvo:', error.message);
+
+  const campos: Partial<PerfilUsuario> = {};
+  const nome = nuvem?.nome || user.user_metadata?.nome;
+  if (!local?.nome?.trim() && nome) campos.nome = nome;
+  if (nuvem) {
+    if (!local?.telefone_cuidador && nuvem.telefone_cuidador) campos.telefone_cuidador = nuvem.telefone_cuidador;
+    if (!local?.nome_cuidador && nuvem.nome_cuidador) campos.nome_cuidador = nuvem.nome_cuidador;
+    if (!local?.email_cuidador && nuvem.email_cuidador) {
+      campos.email_cuidador = nuvem.email_cuidador;
+      campos.avisar_cuidador = nuvem.avisar_cuidador ?? true;
+    }
+  }
+  return campos;
 };
 
 /**
