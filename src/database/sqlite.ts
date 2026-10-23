@@ -186,6 +186,16 @@ export const initDatabase = async (): Promise<void> => {
       );
     `);
 
+    // Columns added after the first release: CREATE TABLE IF NOT EXISTS doesn't touch existing installs
+    const colunasPerfil = await db.getAllAsync<{ name: string }>('PRAGMA table_info(perfil_usuario)');
+    const temColuna = (nome: string) => colunasPerfil.some((c) => c.name === nome);
+    if (!temColuna('email_cuidador')) {
+      await db.execAsync('ALTER TABLE perfil_usuario ADD COLUMN email_cuidador TEXT');
+    }
+    if (!temColuna('avisar_cuidador')) {
+      await db.execAsync('ALTER TABLE perfil_usuario ADD COLUMN avisar_cuidador INTEGER DEFAULT 1');
+    }
+
     // Clean up any mock/demo data from previous runs if present
     try {
       await db.runAsync(`DELETE FROM historico_doses WHERE id LIKE 'dose-today-%' OR id LIKE 'dose-d1-%'`);
@@ -252,8 +262,12 @@ export const setHasCompletedOnboarding = async (completed: boolean): Promise<voi
 export const getPerfilUsuario = async (): Promise<PerfilUsuario | null> => {
   const db = await getDatabase();
   if (db) {
-    const rows = await db.getAllAsync<PerfilUsuario>('SELECT * FROM perfil_usuario LIMIT 1');
-    return rows && rows.length > 0 ? rows[0] : null;
+    const rows = await db.getAllAsync<Omit<PerfilUsuario, 'avisar_cuidador'> & { avisar_cuidador: number | null }>(
+      'SELECT * FROM perfil_usuario LIMIT 1'
+    );
+    if (!rows || rows.length === 0) return null;
+    // SQLite stores booleans as 0/1
+    return { ...rows[0], avisar_cuidador: rows[0].avisar_cuidador !== 0 };
   }
   return memoryStore.perfil;
 };
@@ -264,12 +278,14 @@ export const updatePerfilUsuario = async (perfil: Partial<PerfilUsuario>): Promi
     const current = await getPerfilUsuario();
     if (current) {
       await db.runAsync(
-        `UPDATE perfil_usuario SET nome = ?, email = ?, telefone_cuidador = ?, nome_cuidador = ?, tamanho_fonte = ?, alto_contraste = ? WHERE id = ?`,
+        `UPDATE perfil_usuario SET nome = ?, email = ?, telefone_cuidador = ?, nome_cuidador = ?, email_cuidador = ?, avisar_cuidador = ?, tamanho_fonte = ?, alto_contraste = ? WHERE id = ?`,
         [
           (perfil.nome ?? current.nome) || '',
           (perfil.email !== undefined ? perfil.email : current.email) ?? null,
           (perfil.telefone_cuidador !== undefined ? perfil.telefone_cuidador : current.telefone_cuidador) ?? null,
           (perfil.nome_cuidador !== undefined ? perfil.nome_cuidador : current.nome_cuidador) ?? null,
+          (perfil.email_cuidador !== undefined ? perfil.email_cuidador : current.email_cuidador) ?? null,
+          (perfil.avisar_cuidador ?? current.avisar_cuidador ?? true) ? 1 : 0,
           (perfil.tamanho_fonte ?? current.tamanho_fonte) || 'padrao',
           perfil.alto_contraste !== undefined ? (perfil.alto_contraste ? 1 : 0) : (current.alto_contraste ? 1 : 0),
           current.id,

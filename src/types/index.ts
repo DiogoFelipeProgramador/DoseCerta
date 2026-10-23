@@ -25,6 +25,8 @@ export interface PerfilUsuario {
   email?: string | null;
   telefone_cuidador?: string | null;
   nome_cuidador?: string | null;
+  email_cuidador?: string | null;
+  avisar_cuidador?: boolean; // email the caregiver when a dose stays unconfirmed for 30 min
   tamanho_fonte?: 'padrao' | 'grande' | 'extra_grande';
   alto_contraste?: boolean;
   is_synced?: boolean;

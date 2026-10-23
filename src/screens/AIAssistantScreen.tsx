@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ActivityIndicator,
 } from 'react-native';
@@ -46,9 +47,37 @@ export const AIAssistantScreen: React.FC<AIAssistantScreenProps> = ({ navigation
   const [inputTexto, setInputTexto] = useState('');
   const [carregando, setCarregando] = useState(false);
 
+  // Scroll like common chat assistants: follow the end while the question is sent and the
+  // assistant is thinking, then show the START of the answer with the question right above it
+  const posicoesRef = useRef<Record<string, number>>({});
+  const alturaConteudoRef = useRef(0);
+  const alturaVisivelRef = useRef(0);
+  const seguirFimRef = useRef(false);
+  const rolagemPendenteRef = useRef<{ perguntaId: string; respostaId: string } | null>(null);
+
+  // Suggestions only help before the first question; afterwards they just push the answer away
+  const jaPerguntou = mensagens.some((m) => m.remetente === 'usuario');
+
+  const rolarAtePergunta = (respostaId: string) => {
+    const pendente = rolagemPendenteRef.current;
+    if (!pendente || pendente.respostaId !== respostaId) return;
+    const y = posicoesRef.current[pendente.perguntaId];
+    if (y === undefined) return;
+    rolagemPendenteRef.current = null;
+    // Wait a frame so the content height already includes the answer (short answers can't scroll that far)
+    requestAnimationFrame(() => {
+      const maximo = Math.max(0, alturaConteudoRef.current - alturaVisivelRef.current);
+      scrollViewRef.current?.scrollTo({ y: Math.min(Math.max(0, y - 8), maximo), animated: true });
+    });
+  };
+
+  // Keep the latest message visible when the keyboard opens and the chat shrinks
   useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-  }, [mensagens]);
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, []);
 
   const formatHoraAtual = () => {
     const agora = new Date();
@@ -70,6 +99,7 @@ export const AIAssistantScreen: React.FC<AIAssistantScreenProps> = ({ navigation
       data_hora: formatHoraAtual(),
     };
 
+    seguirFimRef.current = true;
     setMensagens(prev => [...prev, novaMensagemUsuario]);
     setInputTexto('');
     setCarregando(true);
@@ -89,16 +119,25 @@ export const AIAssistantScreen: React.FC<AIAssistantScreenProps> = ({ navigation
         data_hora: formatHoraAtual(),
       };
 
+      seguirFimRef.current = false;
+      rolagemPendenteRef.current = { perguntaId: novaMensagemUsuario.id, respostaId: novaMensagemIA.id };
       setMensagens(prev => [...prev, novaMensagemIA]);
     } catch (e) {
       console.error('Erro na resposta da IA:', e);
     } finally {
+      seguirFimRef.current = false;
       setCarregando(false);
     }
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+    // Wraps the whole screen so the keyboard offset is measured from the top of the screen.
+    // 'padding' on Android too: with edge-to-edge (SDK 57) the window no longer resizes itself.
+    <KeyboardAvoidingView
+      style={[styles.safeArea, { backgroundColor: colors.background }]}
+      behavior="padding"
+    >
+    <SafeAreaView style={styles.safeArea}>
       {/* Top Header */}
       <View style={[styles.header, { backgroundColor: colors.cardBackground, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton} activeOpacity={0.7}>
@@ -122,21 +161,30 @@ export const AIAssistantScreen: React.FC<AIAssistantScreenProps> = ({ navigation
       <DisclaimerBanner />
 
       {/* Chat Messages */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
         <ScrollView
           ref={scrollViewRef}
+          style={{ flex: 1 }}
           contentContainerStyle={styles.chatScroll}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+          keyboardShouldPersistTaps="handled"
+          onLayout={(e) => {
+            alturaVisivelRef.current = e.nativeEvent.layout.height;
+          }}
+          onContentSizeChange={(_, altura) => {
+            alturaConteudoRef.current = altura;
+            if (seguirFimRef.current) {
+              scrollViewRef.current?.scrollToEnd({ animated: true });
+            }
+          }}
         >
           {mensagens.map((msg) => {
             const isUser = msg.remetente === 'usuario';
             return (
               <View
                 key={msg.id}
+                onLayout={(e) => {
+                  posicoesRef.current[msg.id] = e.nativeEvent.layout.y;
+                  if (!isUser) rolarAtePergunta(msg.id);
+                }}
                 style={[
                   styles.messageWrapper,
                   isUser ? styles.userMessageWrapper : styles.iaMessageWrapper,
@@ -190,14 +238,15 @@ export const AIAssistantScreen: React.FC<AIAssistantScreenProps> = ({ navigation
               </View>
               <View style={[styles.loadingBubble, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={{ marginLeft: 8, color: colors.textSecondary, fontSize: typography.caption.fontSize }}>
-                  Consultando bula e orientações seguras...
+                <Text style={[styles.loadingText, { color: colors.textSecondary, fontSize: typography.caption.fontSize }]}>
+                  Pensando na resposta...
                 </Text>
               </View>
             </View>
           )}
 
           {/* Quick Suggestions Chips */}
+          {!jaPerguntou && (
           <View style={styles.suggestionsContainer}>
             <Text style={[styles.suggestionsTitle, { color: colors.textSecondary, fontSize: typography.caption.fontSize }]}>
               Perguntas frequentes:
@@ -217,6 +266,7 @@ export const AIAssistantScreen: React.FC<AIAssistantScreenProps> = ({ navigation
               ))}
             </View>
           </View>
+          )}
         </ScrollView>
 
         {/* Input Bar */}
@@ -230,11 +280,15 @@ export const AIAssistantScreen: React.FC<AIAssistantScreenProps> = ({ navigation
                 fontSize: typography.body.fontSize,
               },
             ]}
-            placeholder="Pergunte sobre seus medicamentos..."
+            // Short placeholder: on Android a long one wraps into a cut-off second line
+            placeholder="Digite sua pergunta"
             placeholderTextColor={colors.textMuted}
             value={inputTexto}
             onChangeText={setInputTexto}
-            onSubmitEditing={() => handleEnviar()}
+            // Grows up to a few lines so the whole question stays visible while typing
+            multiline
+            maxLength={1000}
+            textAlignVertical="center"
           />
           <TouchableOpacity
             style={[styles.sendButton, { backgroundColor: colors.primary }]}
@@ -245,8 +299,8 @@ export const AIAssistantScreen: React.FC<AIAssistantScreenProps> = ({ navigation
             <Ionicons name="send" size={20} color="#FFFFFF" style={{ marginLeft: 2 }} />
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
     </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -310,6 +364,7 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: '82%',
+    flexShrink: 1,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 20,
@@ -341,9 +396,14 @@ const styles = StyleSheet.create({
   loadingBubble: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
     padding: 12,
     borderRadius: 16,
     borderWidth: 1.5,
+  },
+  loadingText: {
+    flexShrink: 1,
+    marginLeft: 8,
   },
   suggestionsContainer: {
     marginTop: 16,
@@ -370,7 +430,7 @@ const styles = StyleSheet.create({
   },
   inputBar: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderTopWidth: 1,
@@ -379,8 +439,11 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minHeight: 50,
+    maxHeight: 130,
     borderRadius: 25,
     paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   sendButton: {
     width: 48,

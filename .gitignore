@@ -32,3 +32,6 @@ npm-debug.*
 
 # alarm sound previews (scripts/gerar-alarme.js)
 sons-opcoes/
+
+# Supabase CLI local state (linked project, versions)
+supabase/.temp/

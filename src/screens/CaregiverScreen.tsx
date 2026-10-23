@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/themeContext';
 import { useFeedback } from '../components/FeedbackProvider';
 import { getPerfilUsuario, updatePerfilUsuario } from '../database/sqlite';
+import { triggerAutoSync } from '../services/supabase';
 import { PerfilUsuario } from '../types';
 import { CustomButton } from '../components/CustomButton';
 import { Ionicons, Feather, FontAwesome5 } from '@expo/vector-icons';
@@ -30,6 +31,7 @@ export const CaregiverScreen: React.FC<CaregiverScreenProps> = ({ navigation }) 
   const [perfil, setPerfil] = useState<PerfilUsuario | null>(null);
   const [nomeCuidador, setNomeCuidador] = useState('');
   const [telefoneCuidador, setTelefoneCuidador] = useState('');
+  const [emailCuidador, setEmailCuidador] = useState('');
   const [notificarAtraso, setNotificarAtraso] = useState(true);
 
   const carregarPerfil = useCallback(async () => {
@@ -38,6 +40,8 @@ export const CaregiverScreen: React.FC<CaregiverScreenProps> = ({ navigation }) 
       setPerfil(p);
       setNomeCuidador(p.nome_cuidador || '');
       setTelefoneCuidador(p.telefone_cuidador || '');
+      setEmailCuidador(p.email_cuidador || '');
+      setNotificarAtraso(p.avisar_cuidador ?? true);
     }
   }, []);
 
@@ -52,6 +56,8 @@ export const CaregiverScreen: React.FC<CaregiverScreenProps> = ({ navigation }) 
   const rawNumber = (perfil?.telefone_cuidador || '').replace(/\D/g, '');
   const temTelefone = rawNumber.length >= 10;
   const temCuidador = Boolean(nomeSalvo || temTelefone);
+  // The alert is sent by the server, so it only works with a connected account
+  const temConta = Boolean(perfil?.email);
 
   const formatarTelefone = (digits: string) => {
     const d = digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits;
@@ -84,11 +90,19 @@ export const CaregiverScreen: React.FC<CaregiverScreenProps> = ({ navigation }) 
       avisar({ mensagem: 'Telefone incompleto. Digite com DDD, por exemplo: (11) 98765-4321', tipo: 'erro' });
       return;
     }
+    const email = emailCuidador.trim().toLowerCase();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      avisar({ mensagem: 'Email do cuidador inválido. Confira, por exemplo: maria@gmail.com', tipo: 'erro' });
+      return;
+    }
     await updatePerfilUsuario({
       nome_cuidador: nomeCuidador.trim(),
       telefone_cuidador: digitos ? formatarTelefone(digitos) : '',
+      email_cuidador: email,
+      avisar_cuidador: notificarAtraso,
     });
     await carregarPerfil();
+    triggerAutoSync();
     avisar({ mensagem: 'Dados do cuidador salvos.' });
   };
 
@@ -182,21 +196,58 @@ export const CaregiverScreen: React.FC<CaregiverScreenProps> = ({ navigation }) 
             placeholderTextColor={colors.textMuted}
           />
 
+          <Text style={[styles.inputLabel, { color: colors.textSecondary, fontSize: typography.caption.fontSize + 1, marginTop: 12 }]}>
+            Email do cuidador
+          </Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.cardAltBg, borderColor: colors.border, color: colors.textPrimary, fontSize: typography.body.fontSize }]}
+            value={emailCuidador}
+            onChangeText={setEmailCuidador}
+            placeholder="nome@email.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholderTextColor={colors.textMuted}
+          />
+
           {/* Automatic Alert Switch */}
           <View style={styles.switchRow}>
             <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={[styles.switchTitle, { color: colors.textPrimary, fontSize: typography.body.fontSize }]}>
+              <Text
+                style={[
+                  styles.switchTitle,
+                  { color: temConta ? colors.textPrimary : colors.textMuted, fontSize: typography.body.fontSize },
+                ]}
+              >
                 Avisar cuidador em atrasos
               </Text>
               <Text style={[styles.switchSub, { color: colors.textSecondary, fontSize: typography.caption.fontSize }]}>
-                Envia notificação se uma dose estiver atrasada há mais de 30 minutos.
+                Envia um email ao cuidador se uma dose ficar 30 minutos sem confirmação.
+                {temConta ? ' Funciona com internet.' : ' Disponível apenas com conta conectada.'}
               </Text>
+              {/* Disabled without an account (the server sends the email): offer the way to enable it */}
+              {!temConta && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('PerfilTab')}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  style={styles.linkEntrar}
+                >
+                  <Text style={[styles.linkEntrarTexto, { color: colors.primary, fontSize: typography.body.fontSize }]}>
+                    Entrar na conta
+                  </Text>
+                  <Feather name="chevron-right" size={18} color={colors.primary} />
+                </TouchableOpacity>
+              )}
             </View>
             <Switch
-              value={notificarAtraso}
+              value={temConta && notificarAtraso}
               onValueChange={setNotificarAtraso}
+              disabled={!temConta}
+              accessibilityLabel="Avisar cuidador em atrasos"
+              accessibilityHint={temConta ? undefined : 'Disponível apenas com conta conectada'}
               trackColor={{ false: '#CBD5E1', true: colors.primaryBorder }}
-              thumbColor={notificarAtraso ? colors.primary : '#F1F5F9'}
+              thumbColor={temConta && notificarAtraso ? colors.primary : '#F1F5F9'}
             />
           </View>
 
@@ -336,6 +387,16 @@ const styles = StyleSheet.create({
   },
   switchSub: {
     marginTop: 2,
+  },
+  linkEntrar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingVertical: 6,
+  },
+  linkEntrarTexto: {
+    fontWeight: '700',
   },
   reportDesc: {
     lineHeight: 24,
