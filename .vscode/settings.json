@@ -1,0 +1,6 @@
+{
+  // Edge Functions run on Deno (Supabase), the rest of the app is React Native
+  "deno.enablePaths": ["supabase/functions"],
+  "deno.config": "./supabase/functions/deno.json",
+  "deno.lint": true
+}
