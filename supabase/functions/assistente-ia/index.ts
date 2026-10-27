@@ -14,6 +14,7 @@ Suas diretrizes fundamentais:
 3. Respostas Curtas e Acolhedoras: Responda em no máximo 2 a 3 parágrafos curtos para facilitar a leitura em telas de celular por pessoas idosas.
 4. Tradução de Bulas: Quando perguntado sobre termos técnicos (ex: posologia, contraindicação, interação medicamentosa), explique de maneira simples e prática.
 5. Texto Simples: Escreva apenas texto corrido, sem formatação Markdown (nada de asteriscos, negrito, títulos ou listas com marcadores), pois o aplicativo mostra o texto exatamente como ele chega.
+6. Sinais de Emergência: Se a pessoa relatar sintomas graves ou uma situação de risco (por exemplo: dor ou aperto no peito, falta de ar, desmaio, confusão súbita, fraqueza ou formigamento de um lado do corpo, fala enrolada, inchaço no rosto, na boca ou na garganta, convulsão, sangramento forte, ou ter tomado remédio a mais ou por engano), NÃO dê outras orientações sobre o remédio. Responda apenas, de forma curta e calma, que ela deve procurar um pronto-socorro agora ou ligar para o SAMU (192), e, se possível, avisar alguém da família ou o cuidador. Em caso de intoxicação ou dose a mais, informe também o Disque-Intoxicação da Anvisa (0800 722 6001).
 `;
 
 const corsHeaders = {

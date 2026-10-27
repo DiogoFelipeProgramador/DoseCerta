@@ -137,18 +137,32 @@ export const MedicationsScreen: React.FC<MedicationsScreenProps> = ({ navigation
                 </View>
               </View>
 
-              <TouchableOpacity
-                onPress={() => handleExcluir(med)}
-                style={[styles.deleteButton, { borderColor: colors.statusSkippedBorder, backgroundColor: colors.statusSkippedBg }]}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`Excluir ${med.nome}`}
-              >
-                <Feather name="trash-2" size={18} color={colors.statusSkipped} />
-                <Text style={[styles.deleteText, { color: colors.statusSkipped, fontSize: typography.body.fontSize }]}>
-                  Excluir
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.actionsRow}>
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('EditMedication', { medicamentoId: med.id })}
+                  style={[styles.actionButton, { borderColor: colors.primaryBorder, backgroundColor: colors.primaryLight }]}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar ${med.nome}`}
+                >
+                  <Feather name="edit-2" size={18} color={colors.primaryDark} />
+                  <Text style={[styles.actionText, { color: colors.primaryDark, fontSize: typography.body.fontSize }]}>
+                    Editar
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleExcluir(med)}
+                  style={[styles.actionButton, { borderColor: colors.statusSkippedBorder, backgroundColor: colors.statusSkippedBg }]}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Excluir ${med.nome}`}
+                >
+                  <Feather name="trash-2" size={18} color={colors.statusSkipped} />
+                  <Text style={[styles.actionText, { color: colors.statusSkipped, fontSize: typography.body.fontSize }]}>
+                    Excluir
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))
         )}
@@ -225,17 +239,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flexShrink: 1,
   },
-  deleteButton: {
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  actionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 14,
     minHeight: 48,
     borderRadius: 14,
     borderWidth: 1,
   },
-  deleteText: {
+  actionText: {
     fontWeight: '700',
   },
 });

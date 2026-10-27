@@ -20,6 +20,7 @@ import { PerfilUsuario } from '../types';
 import { CustomButton } from '../components/CustomButton';
 import { Ionicons, Feather, FontAwesome5 } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { formatarTelefone, validarEmail, validarTelefone } from '../utils/validacao';
 
 interface CaregiverScreenProps {
   navigation: any;
@@ -59,13 +60,6 @@ export const CaregiverScreen: React.FC<CaregiverScreenProps> = ({ navigation }) 
   // The alert is sent by the server, so it only works with a connected account
   const temConta = Boolean(perfil?.email);
 
-  const formatarTelefone = (digits: string) => {
-    const d = digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits;
-    if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
-    if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
-    return digits;
-  };
-
   const avisarSemTelefone = () => {
     avisar({ mensagem: 'Cadastre o telefone do cuidador abaixo para usar este atalho.', tipo: 'info' });
   };
@@ -86,13 +80,10 @@ export const CaregiverScreen: React.FC<CaregiverScreenProps> = ({ navigation }) 
 
   const handleSalvarCuidador = async () => {
     const digitos = telefoneCuidador.replace(/\D/g, '');
-    if (digitos.length > 0 && digitos.length < 10) {
-      avisar({ mensagem: 'Telefone incompleto. Digite com DDD, por exemplo: (11) 98765-4321', tipo: 'erro' });
-      return;
-    }
     const email = emailCuidador.trim().toLowerCase();
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      avisar({ mensagem: 'Email do cuidador inválido. Confira, por exemplo: maria@gmail.com', tipo: 'erro' });
+    const erro = validarTelefone(telefoneCuidador) ?? validarEmail(email);
+    if (erro) {
+      avisar({ mensagem: erro, tipo: 'erro' });
       return;
     }
     await updatePerfilUsuario({

@@ -7,7 +7,7 @@ import { useTheme } from '../theme/themeContext';
 import { useFeedback } from '../components/FeedbackProvider';
 import { NomeRemedio } from '../components/NomeRemedio';
 import { PillGraphic } from '../components/PillGraphic';
-import { getDosePorId, updateDoseStatus, snoozeDose } from '../database/sqlite';
+import { getDosePorId, updateDoseStatus, confirmarDose, snoozeDose } from '../database/sqlite';
 import { fecharAvisosDaDose, MINUTOS_ADIAR } from '../services/notifications';
 import { DoseCompleta } from '../types';
 
@@ -50,16 +50,21 @@ export const DoseTimeScreen: React.FC<DoseTimeScreenProps> = ({ navigation, rout
     if (!dose || salvando) return;
     setSalvando(true);
     try {
+      let comAtraso = false;
       if (acao === 'adiar') {
         await snoozeDose(dose.id, MINUTOS_ADIAR);
+      } else if (acao === 'tomei') {
+        comAtraso = (await confirmarDose(dose.id)) === 'ATRASADO';
       } else {
-        await updateDoseStatus(dose.id, acao === 'tomei' ? 'TOMADO' : 'PULADO');
+        await updateDoseStatus(dose.id, 'PULADO');
       }
       await fecharAvisosDaDose(dose.id);
       avisar({
         mensagem:
           acao === 'tomei'
-            ? `${dose.medicamento_nome} registrado como tomado. Muito bem!`
+            ? comAtraso
+              ? `${dose.medicamento_nome} registrado como tomado com atraso.`
+              : `${dose.medicamento_nome} registrado como tomado. Muito bem!`
             : acao === 'adiar'
               ? `Vamos lembrar de ${dose.medicamento_nome} de novo em ${MINUTOS_ADIAR} minutos.`
               : `${dose.medicamento_nome} registrado como pulado.`,
@@ -71,7 +76,7 @@ export const DoseTimeScreen: React.FC<DoseTimeScreenProps> = ({ navigation, rout
     }
   };
 
-  const jaRespondida = dose && (dose.status === 'TOMADO' || dose.status === 'PULADO');
+  const jaRespondida = dose && dose.status !== 'PENDENTE';
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.primaryLight }]}>
@@ -127,7 +132,7 @@ export const DoseTimeScreen: React.FC<DoseTimeScreenProps> = ({ navigation, rout
           {jaRespondida ? (
             <>
               <Text style={[styles.question, { color: colors.textPrimary, fontSize: typography.title.fontSize }]}>
-                {dose.status === 'TOMADO' ? 'Você já marcou este remédio como tomado ✓' : 'Você marcou que não vai tomar este remédio.'}
+                {dose.status === 'TOMADO' || dose.status === 'ATRASADO' ? 'Você já marcou este remédio como tomado ✓' : 'Você marcou que não vai tomar este remédio.'}
               </Text>
               <TouchableOpacity onPress={fechar} style={[styles.bigButton, { backgroundColor: colors.primary }]} accessibilityRole="button">
                 <Text style={[styles.bigButtonText, { fontSize: typography.bodyBold.fontSize }]}>Voltar</Text>

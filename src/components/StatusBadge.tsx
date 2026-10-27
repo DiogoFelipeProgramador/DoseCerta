@@ -29,7 +29,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
         };
       case 'ATRASADO':
         return {
-          label: 'Atrasado',
+          label: 'Com atraso', // taken, but more than 30 min after the time
           bg: colors.statusDelayedBg,
           border: colors.statusDelayedBorder,
           text: '#92400E',

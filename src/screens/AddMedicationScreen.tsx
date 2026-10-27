@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -19,13 +19,21 @@ import { FormaFarmaceutica, CorMedicamento } from '../types';
 import { StepIndicator } from '../components/StepIndicator';
 import { CustomButton } from '../components/CustomButton';
 import { PillGraphic } from '../components/PillGraphic';
-import { cadastrarMedicamentoCompleto, CODIGOS_DIAS } from '../database/sqlite';
+import {
+  cadastrarMedicamentoCompleto,
+  atualizarMedicamentoCompleto,
+  getMedicamentoParaEdicao,
+  CODIGOS_DIAS,
+} from '../database/sqlite';
 import { triggerAutoSync } from '../services/supabase';
+import { guardarFoto } from '../services/fotos';
+import { DOSE_CONFIG, lerQuantidade, textoDose } from '../utils/dose';
 import { Ionicons, MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 interface AddMedicationScreenProps {
   navigation: any;
+  route?: any; // params: { medicamentoId?: string } when opened from "Gerenciar medicamentos" to edit
 }
 
 const FORMAS: Array<{ forma: FormaFarmaceutica; icon: string; provider: 'mci' | 'ion' | 'fa5' }> = [
@@ -37,28 +45,6 @@ const FORMAS: Array<{ forma: FormaFarmaceutica; icon: string; provider: 'mci' | 
   { forma: 'Pomada', icon: 'lotion-outline', provider: 'mci' },
   { forma: 'Outro', icon: 'dots-horizontal', provider: 'mci' },
 ];
-
-/**
- * How the dose is measured for each kind of medicine (Nielsen #2: match the real world —
- * a syrup is measured in ml, drops are counted, a pill can be split in half).
- */
-interface DoseConfig {
-  singular: string;
-  plural: string;
-  passo: number;
-  padrao: number;
-  min: number;
-  dica?: string;
-}
-
-const DOSE_CONFIG: Partial<Record<FormaFarmaceutica, DoseConfig>> = {
-  Comprimido: { singular: 'comprimido', plural: 'comprimidos', passo: 0.5, padrao: 1, min: 0.5, dica: 'Use ½ se o médico mandou partir o comprimido.' },
-  'Cápsula': { singular: 'cápsula', plural: 'cápsulas', passo: 1, padrao: 1, min: 1 },
-  Gotas: { singular: 'gota', plural: 'gotas', passo: 1, padrao: 10, min: 1 },
-  Xarope: { singular: 'ml', plural: 'ml', passo: 2.5, padrao: 5, min: 2.5, dica: '5 ml = 1 colher de chá · 15 ml = 1 colher de sopa' },
-  'Injeção': { singular: 'unidade', plural: 'unidades', passo: 1, padrao: 1, min: 1, dica: 'Use o número indicado na receita (por exemplo, unidades de insulina).' },
-  Pomada: { singular: 'aplicação', plural: 'aplicações', passo: 1, padrao: 1, min: 1 },
-};
 
 // Only solid medicines have a color that helps to recognize them
 const FORMAS_COM_COR: FormaFarmaceutica[] = ['Comprimido', 'Cápsula'];
@@ -103,19 +89,6 @@ const ORIENTACOES_SUGESTOES = [
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
-const formatarQuantidade = (qtd: number, cfg: DoseConfig) => {
-  if (cfg.passo === 0.5) {
-    const inteiro = Math.floor(qtd);
-    const temMeio = qtd - inteiro >= 0.5;
-    if (inteiro === 0) return '½';
-    return temMeio ? `${inteiro} e ½` : String(inteiro);
-  }
-  return Number.isInteger(qtd) ? String(qtd) : String(qtd).replace('.', ',');
-};
-
-const textoDose = (qtd: number, cfg: DoseConfig) =>
-  `${formatarQuantidade(qtd, cfg)} ${qtd <= 1 ? cfg.singular : cfg.plural}`;
-
 const textoDias = (dias: string[]) => {
   if (dias.length === 7) return 'Todos os dias';
   return DIAS.filter((d) => dias.includes(d.codigo))
@@ -123,10 +96,12 @@ const textoDias = (dias: string[]) => {
     .join(', ');
 };
 
-export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ navigation }) => {
+export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ navigation, route }) => {
   const { colors, typography, textScale } = useTheme();
   const { avisar, confirmar } = useFeedback();
   const empilharBotoes = textScale !== 'padrao';
+  const medicamentoId = route?.params?.medicamentoId;
+  const editando = Boolean(medicamentoId);
 
   const [step, setStep] = useState<number>(1);
   const [erro, setErro] = useState<string>('');
@@ -156,6 +131,49 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
   const diasSemana = todosOsDias ? 'TODOS' : CODIGOS_DIAS.filter((c) => diasEscolhidos.includes(c)).join(',');
   const orientacoes = [...dicasEscolhidas, outraOrientacao.trim()].filter(Boolean).join('. ');
 
+  // Snapshot of the form as loaded, to know if the edit has unsaved changes
+  const formulario = JSON.stringify({ nome: nome.trim(), forma, cor, fotoUrl, dosagem, horarios, diasSemana, orientacoes });
+  const formularioInicial = useRef<string | null>(null);
+  const [prontoParaEditar, setProntoParaEditar] = useState(!editando);
+
+  // Edit: fill the wizard with the saved medication
+  useEffect(() => {
+    if (!medicamentoId) return;
+    let ativo = true;
+    (async () => {
+      const med = await getMedicamentoParaEdicao(medicamentoId);
+      if (!ativo) return;
+      if (!med) {
+        avisar({ mensagem: 'Este remédio não foi encontrado.', tipo: 'erro' });
+        navigation.goBack();
+        return;
+      }
+      const cfg = DOSE_CONFIG[med.forma_farmaceutica];
+      const dosagemSalva = med.horarios[0]?.dosagem ?? '';
+      const dias = med.horarios[0]?.dias_da_semana ?? 'TODOS';
+      const partes = (med.orientacoes_extras ?? '').split('. ').filter(Boolean);
+      setNome(med.nome);
+      setForma(med.forma_farmaceutica);
+      setCor(med.cor || '#FFFFFF');
+      setFotoUrl(med.foto_url ?? null);
+      if (cfg) setQuantidade(lerQuantidade(dosagemSalva, cfg) ?? cfg.padrao);
+      else setDosagemLivre(dosagemSalva);
+      setHorarios(med.horarios.map((h) => h.hora_programada).sort());
+      setTodosOsDias(dias === 'TODOS');
+      setDiasEscolhidos(dias === 'TODOS' ? [] : dias.split(','));
+      setDicasEscolhidas(partes.filter((p) => ORIENTACOES_SUGESTOES.includes(p)));
+      setOutraOrientacao(partes.filter((p) => !ORIENTACOES_SUGESTOES.includes(p)).join('. '));
+      setProntoParaEditar(true);
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [medicamentoId]);
+
+  useEffect(() => {
+    if (prontoParaEditar && formularioInicial.current === null) formularioInicial.current = formulario;
+  }, [prontoParaEditar, formulario]);
+
   const haptic = () => {
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
@@ -180,7 +198,7 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
           titulo: 'Tirar foto do remédio?',
           mensagem:
             'Para isso, o celular vai pedir permissão para usar a câmera. ' +
-            'A foto fica guardada só no seu celular e ajuda a reconhecer o remédio na hora de tomar.',
+            'A foto fica guardada no seu celular (e na cópia de segurança, se você tiver conta) e ajuda a reconhecer o remédio na hora de tomar.',
           confirmarLabel: 'Continuar',
           cancelarLabel: 'Agora não',
         });
@@ -327,6 +345,20 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
       irParaPasso(step - 1);
       return;
     }
+    if (editando) {
+      if (formularioInicial.current !== null && formulario !== formularioInicial.current) {
+        const descartar = await confirmar({
+          titulo: 'Sair sem salvar?',
+          mensagem: 'As alterações deste remédio serão perdidas.',
+          confirmarLabel: 'Sim, sair sem salvar',
+          cancelarLabel: 'Continuar editando',
+          destrutivo: true,
+        });
+        if (!descartar) return;
+      }
+      navigation.goBack();
+      return;
+    }
     if (nome.trim()) {
       const descartar = await confirmar({
         titulo: 'Sair sem salvar?',
@@ -345,27 +377,38 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
     try {
       setIsSaving(true);
       const horariosData = horarios.map((h) => ({ dosagem, hora_programada: h, dias_da_semana: diasSemana }));
-
-      await cadastrarMedicamentoCompleto(
-        {
-          nome: nome.trim(),
-          forma_farmaceutica: forma,
-          cor,
-          foto_url: fotoUrl,
-          orientacoes_extras: orientacoes,
-        },
-        horariosData
-      );
-
-      triggerAutoSync();
-
+      const dados = {
+        nome: nome.trim(),
+        forma_farmaceutica: forma,
+        cor,
+        // The camera's own folder may be cleaned by the system
+        foto_url: await guardarFoto(fotoUrl),
+        orientacoes_extras: orientacoes,
+      };
       const nomeSalvo = nome.trim();
+
+      if (medicamentoId) {
+        await atualizarMedicamentoCompleto(medicamentoId, dados, horariosData);
+        triggerAutoSync();
+        formularioInicial.current = null;
+        navigation.goBack();
+        avisar({ mensagem: `${nomeSalvo} atualizado. Os lembretes foram ajustados.` });
+        return;
+      }
+
+      await cadastrarMedicamentoCompleto(dados, horariosData);
+      triggerAutoSync();
       limparFormulario();
       navigation.navigate('InicioTab');
       avisar({ mensagem: `${nomeSalvo} cadastrado. Os lembretes estão ligados.` });
     } catch (e) {
       console.error('Erro ao salvar medicamento:', e);
-      avisar({ mensagem: 'Não foi possível cadastrar o remédio. Tente novamente.', tipo: 'erro' });
+      avisar({
+        mensagem: editando
+          ? 'Não foi possível salvar as alterações. Tente novamente.'
+          : 'Não foi possível cadastrar o remédio. Tente novamente.',
+        tipo: 'erro',
+      });
     } finally {
       setIsSaving(false);
     }
@@ -481,7 +524,7 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
           <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary, fontSize: typography.title.fontSize }]} numberOfLines={1}>
-          Novo remédio
+          {editando ? 'Editar remédio' : 'Novo remédio'}
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -913,7 +956,7 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
           />
         )}
         <CustomButton
-          title={step === 4 ? 'Salvar remédio' : 'Próximo'}
+          title={step === 4 ? (editando ? 'Salvar alterações' : 'Salvar remédio') : 'Próximo'}
           onPress={step === 4 ? handleSalvar : handleNextStep}
           loading={isSaving}
           size="large"
