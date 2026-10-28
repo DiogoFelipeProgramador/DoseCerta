@@ -105,6 +105,10 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
 
   const [step, setStep] = useState<number>(1);
   const [erro, setErro] = useState<string>('');
+  // The error box can sit below the fold (e.g. at the end of step 2), so we scroll to it when it shows up
+  const scrollRef = useRef<ScrollView>(null);
+  const erroY = useRef(0);
+  const rolarParaErro = useRef(false);
 
   // Step 1
   const [nome, setNome] = useState<string>('');
@@ -332,7 +336,13 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
   const handleNextStep = () => {
     const msg = validarPasso();
     if (msg) {
-      setErro(msg);
+      if (msg === erro) {
+        // Same message already on screen: no re-render, so scroll right away
+        scrollRef.current?.scrollTo({ y: Math.max(0, erroY.current - 120), animated: true });
+      } else {
+        rolarParaErro.current = true;
+        setErro(msg);
+      }
       return;
     }
     haptic();
@@ -428,7 +438,17 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
 
   const MensagemErro = () =>
     erro ? (
-      <View style={[styles.erroBox, { backgroundColor: colors.statusSkippedBg, borderColor: colors.statusSkippedBorder }]}>
+      <View
+        style={[styles.erroBox, { backgroundColor: colors.statusSkippedBg, borderColor: colors.statusSkippedBorder }]}
+        accessibilityLiveRegion="polite"
+        onLayout={(e) => {
+          // y is relative to the step container, which starts at the top of the scroll content
+          erroY.current = e.nativeEvent.layout.y;
+          if (!rolarParaErro.current) return;
+          rolarParaErro.current = false;
+          scrollRef.current?.scrollTo({ y: Math.max(0, erroY.current - 120), animated: true });
+        }}
+      >
         <Ionicons name="alert-circle-outline" size={22} color={colors.statusSkipped} />
         <Text style={[styles.erroTexto, { fontSize: typography.caption.fontSize + 1 }]}>{erro}</Text>
       </View>
@@ -531,7 +551,7 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
 
       <StepIndicator currentStep={step} stepLabels={['Remédio', 'Quando', 'Dicas', 'Conferir']} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* ================= STEP 1: WHAT ================= */}
         {step === 1 && (
           <View>
