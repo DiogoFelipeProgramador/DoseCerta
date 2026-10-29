@@ -28,10 +28,13 @@ export const BottomTabNavigator: React.FC<BottomTabNavigatorProps> = ({ onResetO
           backgroundColor: colors.cardBackground,
           borderTopColor: colors.border,
           borderTopWidth: 1.5,
-          height: Platform.OS === 'ios' ? 88 : 72,
+          // Web gets a bit more room: the "Novo" circle and its label sit inside the bar there
+          height: Platform.OS === 'ios' ? 88 : Platform.OS === 'web' ? 80 : 72,
           paddingBottom: Platform.OS === 'ios' ? 24 : 10,
           paddingTop: 8,
         },
+        // On wide browser windows the tabs default to label beside the icon, which breaks the "Novo" button
+        tabBarLabelPosition: 'below-icon',
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: {
@@ -85,11 +88,14 @@ export const BottomTabNavigator: React.FC<BottomTabNavigatorProps> = ({ onResetO
           tabBarLabelStyle: {
             fontSize: typography.caption.fontSize - 1,
             fontWeight: '700',
+            // On web the circle sits inside the bar, right on top of the label
+            ...(Platform.OS === 'web' && { marginTop: 6 }),
           },
           tabBarIcon: ({ color, size, focused }) => (
             <View
               style={[
                 styles.addTabIcon,
+                Platform.OS === 'web' && styles.addTabIconWeb,
                 {
                   backgroundColor: colors.primary,
                   borderColor: colors.cardBackground,
@@ -142,6 +148,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 6,
     elevation: 6,
+  },
+  // The browser clips the raised circle at the tab bar's edge, so on web it sits inside the bar
+  addTabIconWeb: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginTop: 0,
+    borderWidth: 0,
   },
 });
 
