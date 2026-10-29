@@ -684,6 +684,9 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
                 {fotoUrl ? 'Tirar outra foto' : 'Tirar foto'}
               </Text>
             </TouchableOpacity>
+            <Text style={[styles.helper, { color: colors.textSecondary, fontSize: typography.caption.fontSize }]}>
+              A foto aparece na hora do lembrete, para ajudar a reconhecer a caixa certa.
+            </Text>
           </View>
         )}
 
