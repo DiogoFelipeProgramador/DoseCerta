@@ -298,7 +298,10 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
   };
 
   // ---------- Navigation ----------
+  const voltarAoTopo = () => scrollRef.current?.scrollTo({ y: 0, animated: false });
+
   const limparFormulario = () => {
+    voltarAoTopo();
     setStep(1);
     setErro('');
     setNome('');
@@ -328,7 +331,9 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
     return '';
   };
 
+  // Each step starts at the top, not where the previous one was left
   const irParaPasso = (n: number) => {
+    voltarAoTopo();
     setErro('');
     setStep(n);
   };
