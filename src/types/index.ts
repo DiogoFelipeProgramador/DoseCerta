@@ -15,7 +15,8 @@ export type CorMedicamento =
   | '#2563EB' // Azul escuro
   | '#059669' // Verde
   | '#FB923C' // Laranja
-  | '#A855F7'; // Roxo
+  | '#E7D8B5' // Bege
+  | '#A855F7'; // Roxo (legado: mantido para medicamentos já cadastrados)
 
 export type StatusDose = 'PENDENTE' | 'TOMADO' | 'ATRASADO' | 'PULADO';
 

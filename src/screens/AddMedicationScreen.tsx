@@ -56,6 +56,8 @@ const CORES: Array<{ cor: CorMedicamento; nome: string }> = [
   { cor: '#FDE047', nome: 'Amarelo' },
   { cor: '#2563EB', nome: 'Azul escuro' },
   { cor: '#059669', nome: 'Verde' },
+  { cor: '#FB923C', nome: 'Laranja' },
+  { cor: '#E7D8B5', nome: 'Bege' },
 ];
 
 const HORARIOS_RAPIDOS = [
@@ -655,7 +657,7 @@ export const AddMedicationScreen: React.FC<AddMedicationScreenProps> = ({ naviga
                           ]}
                         >
                           {isSelected && (
-                            <Ionicons name="checkmark" size={20} color={c.cor === '#FFFFFF' || c.cor === '#FDE047' ? '#000000' : '#FFFFFF'} />
+                            <Ionicons name="checkmark" size={20} color={c.cor === '#FFFFFF' || c.cor === '#FDE047' || c.cor === '#E7D8B5' ? '#000000' : '#FFFFFF'} />
                           )}
                         </View>
                         <Text
