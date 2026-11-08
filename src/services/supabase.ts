@@ -76,6 +76,27 @@ export interface AuthUserState {
   isLoggedIn: boolean;
 }
 
+const CADASTRO_RECUSADO =
+  'Não foi possível criar a conta com esses dados. Se você já tem cadastro, tente entrar.';
+const MUITAS_TENTATIVAS = 'Muitas tentativas. Aguarde alguns minutos e tente de novo.';
+const ERRO_GENERICO = 'Não foi possível concluir agora. Verifique sua internet e tente de novo.';
+
+const MENSAGENS_ERRO_AUTH: Record<string, string> = {
+  invalid_credentials: 'E-mail ou senha incorretos.',
+  email_not_confirmed: 'Confirme seu e-mail antes de entrar. Veja sua caixa de entrada.',
+  user_already_exists: CADASTRO_RECUSADO,
+  email_exists: CADASTRO_RECUSADO,
+  weak_password: 'Essa senha é muito fraca. Tente misturar letras e números.',
+  email_address_invalid: 'Digite um e-mail válido.',
+  validation_failed: 'Confira o e-mail e a senha digitados.',
+  signup_disabled: 'No momento não é possível criar novas contas.',
+  over_request_rate_limit: MUITAS_TENTATIVAS,
+  over_email_send_rate_limit: MUITAS_TENTATIVAS,
+};
+
+const mensagemErroAuth = (error: { code?: string }) =>
+  (error.code && MENSAGENS_ERRO_AUTH[error.code]) || ERRO_GENERICO;
+
 /**
  * Criação de conta do usuário
  */
@@ -103,7 +124,7 @@ export const registerUserAccount = async (
     });
 
     if (error) {
-      return { success: false, message: error.message };
+      return { success: false, message: mensagemErroAuth(error) };
     }
 
     await updatePerfilUsuario({ email, nome: nome || undefined });
@@ -116,7 +137,7 @@ export const registerUserAccount = async (
     };
   } catch (err: any) {
     console.warn('Erro ao registrar conta:', err);
-    return { success: false, message: err?.message || 'Erro inesperado ao criar conta.' };
+    return { success: false, message: ERRO_GENERICO };
   }
 };
 
@@ -140,7 +161,7 @@ export const loginUserAccount = async (
     });
 
     if (error) {
-      return { success: false, message: error.message };
+      return { success: false, message: mensagemErroAuth(error) };
     }
 
     // Bring the saved profile first: the sync below uploads the local one and would
@@ -165,7 +186,7 @@ export const loginUserAccount = async (
     };
   } catch (err: any) {
     console.warn('Erro no login:', err);
-    return { success: false, message: err?.message || 'Erro inesperado ao realizar login.' };
+    return { success: false, message: ERRO_GENERICO };
   }
 };
 

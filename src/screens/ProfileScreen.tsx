@@ -49,6 +49,8 @@ const TAMANHOS_TEXTO: Array<{ scale: TextScale; label: string; previewSize: numb
   { scale: 'extra_grande', label: 'Maior', previewSize: 28 },
 ];
 
+const LINK_VIDEO_APRESENTACAO = 'https://www.youtube.com/watch?v=N11UcXfpweU';
+
 const haptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
   if (Platform.OS !== 'web') Haptics.impactAsync(style);
 };
@@ -638,6 +640,20 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation, onRese
             <Feather name="play-circle" size={22} color={colors.textSecondary} />
             <Text style={[styles.menuRowText, { color: colors.textPrimary, fontSize: typography.body.fontSize }]}>
               Ver a apresentação do app
+            </Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
+
+          <TouchableOpacity
+            onPress={() => Linking.openURL(LINK_VIDEO_APRESENTACAO)}
+            style={styles.menuRow}
+            activeOpacity={0.7}
+          >
+            <Feather name="youtube" size={22} color={colors.textSecondary} />
+            <Text style={[styles.menuRowText, { color: colors.textPrimary, fontSize: typography.body.fontSize }]}>
+              Assistir ao vídeo de apresentação
             </Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
