@@ -13,11 +13,7 @@ import * as Haptics from 'expo-haptics';
 
 const Tab = createBottomTabNavigator();
 
-interface BottomTabNavigatorProps {
-  onResetOnboarding: () => void;
-}
-
-export const BottomTabNavigator: React.FC<BottomTabNavigatorProps> = ({ onResetOnboarding }) => {
+export const BottomTabNavigator: React.FC = () => {
   const { colors, typography } = useTheme();
 
   return (
@@ -128,7 +124,7 @@ export const BottomTabNavigator: React.FC<BottomTabNavigatorProps> = ({ onResetO
           ),
         }}
       >
-        {(props) => <ProfileScreen {...props} onResetOnboarding={onResetOnboarding} />}
+        {(props) => <ProfileScreen {...props} />}
       </Tab.Screen>
     </Tab.Navigator>
   );

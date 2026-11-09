@@ -40,7 +40,6 @@ import * as Haptics from 'expo-haptics';
 
 interface ProfileScreenProps {
   navigation: any;
-  onResetOnboarding: () => void;
 }
 
 const TAMANHOS_TEXTO: Array<{ scale: TextScale; label: string; previewSize: number }> = [
@@ -55,7 +54,7 @@ const haptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle
   if (Platform.OS !== 'web') Haptics.impactAsync(style);
 };
 
-export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation, onResetOnboarding }) => {
+export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const { colors, typography, textScale, setTextScale, isHighContrast, setIsHighContrast } = useTheme();
   const { avisar, confirmar } = useFeedback();
   const [lembretes, setLembretes] = useState<DiagnosticoLembretes | null>(null);
@@ -636,24 +635,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation, onRese
 
           <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
 
-          <TouchableOpacity onPress={onResetOnboarding} style={styles.menuRow} activeOpacity={0.7}>
-            <Feather name="play-circle" size={22} color={colors.textSecondary} />
-            <Text style={[styles.menuRowText, { color: colors.textPrimary, fontSize: typography.body.fontSize }]}>
-              Ver a apresentação do app
-            </Text>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
-
           <TouchableOpacity
             onPress={() => Linking.openURL(LINK_VIDEO_APRESENTACAO)}
             style={styles.menuRow}
             activeOpacity={0.7}
           >
-            <Feather name="youtube" size={22} color={colors.textSecondary} />
+            <Feather name="play-circle" size={22} color={colors.textSecondary} />
             <Text style={[styles.menuRowText, { color: colors.textPrimary, fontSize: typography.body.fontSize }]}>
-              Assistir ao vídeo de apresentação
+              Ver a apresentação do app
             </Text>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>

@@ -138,11 +138,6 @@ export const AppNavigator: React.FC = () => {
     setHasCompletedOnboardingState(true);
   };
 
-  const handleResetOnboarding = async () => {
-    await setHasCompletedOnboarding(false);
-    setHasCompletedOnboardingState(false);
-  };
-
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
@@ -166,11 +161,7 @@ export const AppNavigator: React.FC = () => {
         ) : (
           <>
             <Stack.Screen name="Main">
-              {() => (
-                <BottomTabNavigator
-                  onResetOnboarding={handleResetOnboarding}
-                />
-              )}
+              {() => <BottomTabNavigator />}
             </Stack.Screen>
             <Stack.Screen
               name="AIAssistant"
