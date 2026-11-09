@@ -29,11 +29,13 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
         };
       case 'ATRASADO':
         return {
-          label: 'Com atraso', // taken, but more than 30 min after the time
+          // Taken, but more than 30 min after the time. Two lines keep the badge narrow
+          // so the medication name on the home card still has room.
+          label: 'Tomado\ncom atraso',
           bg: colors.statusDelayedBg,
           border: colors.statusDelayedBorder,
           text: '#92400E',
-          icon: <Ionicons name="time" size={size === 'large' ? 22 : 18} color="#D97706" />,
+          icon: <Ionicons name="checkmark-circle" size={size === 'large' ? 22 : 18} color="#D97706" />,
         };
       case 'PULADO':
         return {
