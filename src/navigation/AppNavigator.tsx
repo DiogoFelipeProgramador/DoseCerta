@@ -28,7 +28,7 @@ import {
   RespostaLembrete,
   MINUTOS_ADIAR,
 } from '../services/notifications';
-import { sincronizarDosesNuvem, verificarSessaoConta, baixarRotinaNuvem } from '../services/supabase';
+import { triggerAutoSync, verificarSessaoConta, baixarRotinaNuvem } from '../services/supabase';
 import { useFeedback } from '../components/FeedbackProvider';
 import { useTheme } from '../theme/themeContext';
 
@@ -120,8 +120,9 @@ export const AppNavigator: React.FC = () => {
         if (perfil?.alto_contraste) setIsHighContrast(Boolean(perfil.alto_contraste));
         await requestNotificationPermissions();
         sincronizarLembretes();
-        // Tell the server which doses are waiting (caregiver alert); returns at once without an account
-        sincronizarDosesNuvem();
+        // Send what is still only on this device (medications, schedules, doses) and tell the
+        // server which doses are waiting (caregiver alert); returns at once without an account
+        triggerAutoSync();
         // Medications saved on another device with the same account (the screens reload when they arrive)
         baixarRotinaNuvem();
         const completed = await getHasCompletedOnboarding();
