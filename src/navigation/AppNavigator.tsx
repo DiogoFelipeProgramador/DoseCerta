@@ -28,7 +28,7 @@ import {
   RespostaLembrete,
   MINUTOS_ADIAR,
 } from '../services/notifications';
-import { sincronizarDosesNuvem, verificarSessaoConta } from '../services/supabase';
+import { sincronizarDosesNuvem, verificarSessaoConta, baixarRotinaNuvem } from '../services/supabase';
 import { useFeedback } from '../components/FeedbackProvider';
 import { useTheme } from '../theme/themeContext';
 
@@ -122,6 +122,8 @@ export const AppNavigator: React.FC = () => {
         sincronizarLembretes();
         // Tell the server which doses are waiting (caregiver alert); returns at once without an account
         sincronizarDosesNuvem();
+        // Medications saved on another device with the same account (the screens reload when they arrive)
+        baixarRotinaNuvem();
         const completed = await getHasCompletedOnboarding();
         setHasCompletedOnboardingState(completed);
       } catch (err) {

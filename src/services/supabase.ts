@@ -56,16 +56,19 @@ export const supabase = isConfigured
     })
   : null;
 
-// Only refresh the session token while the app is in the foreground (Supabase's RN recommendation)
-if (supabase && Platform.OS !== 'web') {
+if (supabase) {
   AppState.addEventListener('change', (estado) => {
+    // Only refresh the session token while the app is in the foreground (Supabase's RN
+    // recommendation; the browser handles it on its own)
+    if (Platform.OS !== 'web') {
+      if (estado === 'active') supabase.auth.startAutoRefresh();
+      else supabase.auth.stopAutoRefresh();
+    }
     if (estado === 'active') {
-      supabase.auth.startAutoRefresh();
       sincronizarDosesNuvem();
-      // Changes saved while offline go up now
+      // Changes saved while offline go up now, and what was saved on another device comes down
       enviarRotinaNuvem();
-    } else {
-      supabase.auth.stopAutoRefresh();
+      baixarRotinaNuvem();
     }
   });
 }
@@ -169,19 +172,22 @@ export const loginUserAccount = async (
     await updatePerfilUsuario({ email, ...(await buscarPerfilNuvem(data.user)) });
     // Same for the medications, schedules and history (e.g. logging in on a new phone)
     let recuperados = 0;
+    let falhouRecuperar = false;
     try {
       recuperados = await restaurarRotinaNuvem(data.user.id);
     } catch (err) {
-      console.log('[Conta] Não foi possível recuperar a cópia de segurança:', err);
+      falhouRecuperar = true;
+      console.warn('[Conta] Não foi possível recuperar a cópia de segurança:', err);
     }
     await triggerAutoSync();
 
     return {
       success: true,
-      message:
-        recuperados > 0
-          ? `Login realizado! ${recuperados} ${recuperados === 1 ? 'remédio foi recuperado' : 'remédios foram recuperados'} com o histórico.`
-          : 'Login realizado com sucesso! Seus dados foram sincronizados.',
+      message: falhouRecuperar
+        ? 'Você entrou na conta, mas não foi possível trazer seus remédios agora. Eles serão buscados de novo quando você abrir o app.'
+        : recuperados > 0
+          ? `Pronto, você entrou na sua conta. ${recuperados} ${recuperados === 1 ? 'remédio foi recuperado' : 'remédios foram recuperados'} com o histórico.`
+          : 'Pronto, você entrou na sua conta.',
       user: data.user,
     };
   } catch (err: any) {
@@ -476,6 +482,33 @@ const restaurarRotinaNuvem = async (userId: string): Promise<number> => {
     }
   }
   return novos.length;
+};
+
+let baixandoRotina: Promise<void> | null = null;
+
+/**
+ * Brings what was saved from another device into this one. Runs when the app opens and
+ * whenever it comes back to the screen; does nothing without an account.
+ */
+export const baixarRotinaNuvem = (): Promise<void> => {
+  if (!supabase) return Promise.resolve();
+  const cliente = supabase;
+  if (!baixandoRotina) {
+    baixandoRotina = (async () => {
+      try {
+        const perfil = await getPerfilUsuario();
+        if (!perfil?.email) return;
+        const { data } = await cliente.auth.getSession();
+        if (!data.session) return;
+        await restaurarRotinaNuvem(data.session.user.id);
+      } catch (err) {
+        console.warn('[Cópia de segurança] Não foi possível buscar a rotina:', err);
+      } finally {
+        baixandoRotina = null;
+      }
+    })();
+  }
+  return baixandoRotina;
 };
 
 // ---------------------------------------------------------------------------

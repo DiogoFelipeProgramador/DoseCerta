@@ -22,6 +22,7 @@ import {
   restaurarDose,
   snoozeDose,
   prepararDoses,
+  aoAlterarDoses,
 } from '../database/sqlite';
 import { PillGraphic } from '../components/PillGraphic';
 import { StatusBadge } from '../components/StatusBadge';
@@ -78,6 +79,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     });
     return () => sub.remove();
   }, [carregarDados]);
+
+  // Reload when the doses change behind the screen (e.g. medications arriving from the cloud backup)
+  useEffect(() => aoAlterarDoses(carregarDados), [carregarDados]);
 
   const onRefresh = async () => {
     setRefreshing(true);

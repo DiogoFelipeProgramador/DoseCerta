@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../theme/themeContext';
 import { NomeRemedio } from '../components/NomeRemedio';
 import { useFeedback } from '../components/FeedbackProvider';
-import { getMedicamentosAtivos, excluirMedicamento, MedicamentoComHorarios } from '../database/sqlite';
+import { getMedicamentosAtivos, excluirMedicamento, aoAlterarDoses, MedicamentoComHorarios } from '../database/sqlite';
 import { triggerAutoSync } from '../services/supabase';
 import { PillGraphic } from '../components/PillGraphic';
 import { CustomButton } from '../components/CustomButton';
@@ -48,6 +48,9 @@ export const MedicationsScreen: React.FC<MedicationsScreenProps> = ({ navigation
       carregar();
     }, [carregar])
   );
+
+  // Medications arriving from the cloud backup while this screen is open
+  useEffect(() => aoAlterarDoses(carregar), [carregar]);
 
   const remover = async (med: MedicamentoComHorarios) => {
     await excluirMedicamento(med.id);

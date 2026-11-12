@@ -1440,6 +1440,8 @@ export const restaurarDadosDaNuvem = async (dados: DadosNuvem): Promise<string[]
   const perfil = await getPerfilUsuario();
   const usuarioId = perfil?.id || 'usuario-local';
   const novos: string[] = [];
+  // Nothing new in the backup (the usual case when checking again): leave everything as it is
+  let mudou = false;
 
   if (db) {
     await db.withTransactionAsync(async () => {
@@ -1453,16 +1455,20 @@ export const restaurarDadosDaNuvem = async (dados: DadosNuvem): Promise<string[]
         if (r.changes > 0) novos.push(m.id);
       }
       for (const h of dados.horarios) {
-        await db.runAsync(
+        const r = await db.runAsync(
           `INSERT OR IGNORE INTO horarios_medicamento (id, medicamento_id, dosagem, hora_programada, dias_da_semana, ativo, criado_em)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [h.id, h.medicamento_id, h.dosagem, h.hora_programada, h.dias_da_semana || 'TODOS', h.ativo ? 1 : 0, h.criado_em ?? null]
         );
+        if (r.changes > 0) mudou = true;
         // A schedule turned off on the other phone stays off here
-        if (!h.ativo) await db.runAsync('UPDATE horarios_medicamento SET ativo = 0 WHERE id = ?', [h.id]);
+        if (!h.ativo) {
+          const off = await db.runAsync('UPDATE horarios_medicamento SET ativo = 0 WHERE id = ? AND ativo <> 0', [h.id]);
+          if (off.changes > 0) mudou = true;
+        }
       }
       for (const d of dados.doses) {
-        await db.runAsync(
+        const r = await db.runAsync(
           `INSERT INTO historico_doses
              (id, medicamento_id, horario_id, data_hora_prevista, data_hora_realizada, status, observacao, atualizado_em, sincronizado)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
@@ -1485,6 +1491,7 @@ export const restaurarDadosDaNuvem = async (dados: DadosNuvem): Promise<string[]
             d.atualizado_em ?? null,
           ]
         );
+        if (r.changes > 0) mudou = true;
       }
     });
   } else {
@@ -1495,16 +1502,25 @@ export const restaurarDadosDaNuvem = async (dados: DadosNuvem): Promise<string[]
     }
     for (const h of dados.horarios) {
       const local = memoryStore.horarios.find(x => x.id === h.id);
-      if (!local) memoryStore.horarios.push({ ...h });
-      else if (!h.ativo) local.ativo = false;
+      if (!local) {
+        memoryStore.horarios.push({ ...h });
+        mudou = true;
+      } else if (!h.ativo && local.ativo !== false) {
+        local.ativo = false;
+        mudou = true;
+      }
     }
     for (const d of dados.doses) {
       const i = memoryStore.historico.findIndex(x => x.id === d.id);
       if (i === -1) memoryStore.historico.push({ ...d, sincronizado: true });
       else if (memoryStore.historico[i].status === 'PENDENTE') memoryStore.historico[i] = { ...d, sincronizado: true };
+      else continue;
+      mudou = true;
     }
-    persistMemoryStore();
+    if (mudou || novos.length > 0) persistMemoryStore();
   }
+
+  if (!mudou && novos.length === 0) return novos;
 
   // Schedules from the backup may start before the days already filled in on this phone
   await salvarAjuste(CHAVE_DOSES_CRIADAS_ATE, null);

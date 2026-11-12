@@ -186,7 +186,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       if (res.success) {
         fecharFormConta();
         await carregarPerfil();
-        avisar({ mensagem: authMode === 'register' ? 'Conta criada! Seus dados agora têm cópia de segurança.' : 'Pronto, você entrou na sua conta.' });
+        avisar({ mensagem: authMode === 'register' ? 'Conta criada! Seus dados agora têm cópia de segurança.' : res.message });
       } else {
         setAuthErro(res.message);
       }
