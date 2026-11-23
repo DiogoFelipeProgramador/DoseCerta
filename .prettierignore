@@ -1,5 +1,0 @@
-node_modules
-.expo
-dist
-package-lock.json
-supabase/functions

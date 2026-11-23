@@ -15,8 +15,7 @@ export type CorMedicamento =
   | '#2563EB' // Azul escuro
   | '#059669' // Verde
   | '#FB923C' // Laranja
-  | '#E7D8B5' // Bege
-  | '#A855F7'; // Roxo (legado: mantido para medicamentos já cadastrados)
+  | '#A855F7'; // Roxo
 
 export type StatusDose = 'PENDENTE' | 'TOMADO' | 'ATRASADO' | 'PULADO';
 
@@ -43,7 +42,6 @@ export interface Medicamento {
   foto_url?: string | null;
   orientacoes_extras?: string | null;
   criado_em?: string;
-  foto_sincronizada?: boolean; // the current photo is in the cloud backup
 }
 
 export interface HorarioMedicamento {
@@ -53,7 +51,6 @@ export interface HorarioMedicamento {
   hora_programada: string; // "08:00", "12:00", "20:00"
   dias_da_semana: string; // "TODOS", "SEG,TER,QUA,QUI,SEX,SAB,DOM"
   ativo: boolean;
-  criado_em?: string | null; // when the schedule started: no doses are created before it
 }
 
 export interface HistoricoDose {
@@ -65,7 +62,6 @@ export interface HistoricoDose {
   status: StatusDose;
   observacao?: string | null;
   atualizado_em?: string;
-  sincronizado?: boolean; // this version is already in the cloud backup
 }
 
 export interface DoseCompleta extends HistoricoDose {

@@ -8,16 +8,14 @@ import { AIAssistantScreen } from '../screens/AIAssistantScreen';
 import { MedicationsScreen } from '../screens/MedicationsScreen';
 import { ReportScreen } from '../screens/ReportScreen';
 import { DoseTimeScreen } from '../screens/DoseTimeScreen';
-import { AddMedicationScreen } from '../screens/AddMedicationScreen';
 import {
   initDatabase,
   getHasCompletedOnboarding,
   setHasCompletedOnboarding,
   getPerfilUsuario,
   getDosePorId,
-  confirmarDose,
+  updateDoseStatus,
   snoozeDose,
-  prepararDoses,
 } from '../database/sqlite';
 import {
   requestNotificationPermissions,
@@ -28,7 +26,7 @@ import {
   RespostaLembrete,
   MINUTOS_ADIAR,
 } from '../services/notifications';
-import { triggerAutoSync, verificarSessaoConta, baixarRotinaNuvem } from '../services/supabase';
+import { sincronizarDosesNuvem, verificarSessaoConta } from '../services/supabase';
 import { useFeedback } from '../components/FeedbackProvider';
 import { useTheme } from '../theme/themeContext';
 
@@ -66,13 +64,8 @@ export const AppNavigator: React.FC = () => {
         const dose = await getDosePorId(r.doseId); // also creates that day's doses if needed
         if (!dose) return;
         if (r.acao === 'tomei') {
-          const status = await confirmarDose(dose.id);
-          avisar({
-            mensagem:
-              status === 'ATRASADO'
-                ? `${dose.medicamento_nome} registrado como tomado com atraso.`
-                : `${dose.medicamento_nome} registrado como tomado. Muito bem!`,
-          });
+          await updateDoseStatus(dose.id, 'TOMADO');
+          avisar({ mensagem: `${dose.medicamento_nome} registrado como tomado. Muito bem!` });
         } else {
           await snoozeDose(dose.id, MINUTOS_ADIAR);
           avisar({ mensagem: `Vamos lembrar de ${dose.medicamento_nome} de novo em ${MINUTOS_ADIAR} minutos.`, tipo: 'info' });
@@ -99,7 +92,7 @@ export const AppNavigator: React.FC = () => {
     const pararChegada = ouvirLembretesComAppAberto(abrirHoraDoRemedio);
     // Keep the next days of reminders scheduled whenever the user comes back to the app
     const subApp = AppState.addEventListener('change', (estado) => {
-      if (estado === 'active') prepararDoses().then(sincronizarLembretes);
+      if (estado === 'active') sincronizarLembretes();
     });
     return () => {
       pararRespostas();
@@ -112,19 +105,14 @@ export const AppNavigator: React.FC = () => {
     const initialize = async () => {
       try {
         await initDatabase();
-        // Fills in the days the app wasn't opened and closes the doses of days that are over
-        await prepararDoses();
         await verificarSessaoConta();
         const perfil = await getPerfilUsuario();
         if (perfil?.tamanho_fonte) setTextScale(perfil.tamanho_fonte);
         if (perfil?.alto_contraste) setIsHighContrast(Boolean(perfil.alto_contraste));
         await requestNotificationPermissions();
         sincronizarLembretes();
-        // Send what is still only on this device (medications, schedules, doses) and tell the
-        // server which doses are waiting (caregiver alert); returns at once without an account
-        triggerAutoSync();
-        // Medications saved on another device with the same account (the screens reload when they arrive)
-        baixarRotinaNuvem();
+        // Tell the server which doses are waiting (caregiver alert); returns at once without an account
+        sincronizarDosesNuvem();
         const completed = await getHasCompletedOnboarding();
         setHasCompletedOnboardingState(completed);
       } catch (err) {
@@ -139,6 +127,11 @@ export const AppNavigator: React.FC = () => {
   const handleFinishOnboarding = async () => {
     await setHasCompletedOnboarding(true);
     setHasCompletedOnboardingState(true);
+  };
+
+  const handleResetOnboarding = async () => {
+    await setHasCompletedOnboarding(false);
+    setHasCompletedOnboardingState(false);
   };
 
   if (loading) {
@@ -164,7 +157,11 @@ export const AppNavigator: React.FC = () => {
         ) : (
           <>
             <Stack.Screen name="Main">
-              {() => <BottomTabNavigator />}
+              {() => (
+                <BottomTabNavigator
+                  onResetOnboarding={handleResetOnboarding}
+                />
+              )}
             </Stack.Screen>
             <Stack.Screen
               name="AIAssistant"
@@ -174,11 +171,6 @@ export const AppNavigator: React.FC = () => {
             <Stack.Screen
               name="Medications"
               component={MedicationsScreen}
-              options={{ animation: 'slide_from_right' }}
-            />
-            <Stack.Screen
-              name="EditMedication"
-              component={AddMedicationScreen}
               options={{ animation: 'slide_from_right' }}
             />
             <Stack.Screen

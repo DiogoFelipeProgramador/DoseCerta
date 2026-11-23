@@ -40,6 +40,7 @@ import * as Haptics from 'expo-haptics';
 
 interface ProfileScreenProps {
   navigation: any;
+  onResetOnboarding: () => void;
 }
 
 const TAMANHOS_TEXTO: Array<{ scale: TextScale; label: string; previewSize: number }> = [
@@ -48,13 +49,11 @@ const TAMANHOS_TEXTO: Array<{ scale: TextScale; label: string; previewSize: numb
   { scale: 'extra_grande', label: 'Maior', previewSize: 28 },
 ];
 
-const LINK_VIDEO_APRESENTACAO = 'https://www.youtube.com/watch?v=N11UcXfpweU';
-
 const haptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
   if (Platform.OS !== 'web') Haptics.impactAsync(style);
 };
 
-export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
+export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation, onResetOnboarding }) => {
   const { colors, typography, textScale, setTextScale, isHighContrast, setIsHighContrast } = useTheme();
   const { avisar, confirmar } = useFeedback();
   const [lembretes, setLembretes] = useState<DiagnosticoLembretes | null>(null);
@@ -186,7 +185,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       if (res.success) {
         fecharFormConta();
         await carregarPerfil();
-        avisar({ mensagem: authMode === 'register' ? 'Conta criada! Seus dados agora têm cópia de segurança.' : res.message });
+        avisar({ mensagem: authMode === 'register' ? 'Conta criada! Seus dados agora têm cópia de segurança.' : 'Pronto, você entrou na sua conta.' });
       } else {
         setAuthErro(res.message);
       }
@@ -635,11 +634,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
           <View style={[styles.rowDivider, { backgroundColor: colors.border }]} />
 
-          <TouchableOpacity
-            onPress={() => Linking.openURL(LINK_VIDEO_APRESENTACAO)}
-            style={styles.menuRow}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity onPress={onResetOnboarding} style={styles.menuRow} activeOpacity={0.7}>
             <Feather name="play-circle" size={22} color={colors.textSecondary} />
             <Text style={[styles.menuRowText, { color: colors.textPrimary, fontSize: typography.body.fontSize }]}>
               Ver a apresentação do app

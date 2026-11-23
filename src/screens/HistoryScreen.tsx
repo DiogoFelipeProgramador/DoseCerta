@@ -14,7 +14,7 @@ import { useTheme } from '../theme/themeContext';
 import { NomeRemedio } from '../components/NomeRemedio';
 import { useFeedback } from '../components/FeedbackProvider';
 import { DoseCompleta, StatusDose } from '../types';
-import { getHistoricoMensal, updateDoseStatus, confirmarDose, restaurarDose, prepararDoses } from '../database/sqlite';
+import { getHistoricoMensal, updateDoseStatus } from '../database/sqlite';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { DoseActionModal } from '../components/DoseActionModal';
 import * as Haptics from 'expo-haptics';
@@ -48,7 +48,6 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
   const carregarHistorico = useCallback(async () => {
     try {
       const mesStr = `${mesAtual.ano}-${String(mesAtual.mes + 1).padStart(2, '0')}`;
-      await prepararDoses();
       const data = await getHistoricoMensal(mesStr);
       setMetrics(data);
     } catch (e) {
@@ -89,23 +88,21 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
 
   const handleAlterarStatus = async (dose: DoseCompleta, status: StatusDose) => {
     setDoseSelecionada(null);
-    // "Tomei" is checked against the scheduled time (it may become "taken late")
-    const salvo = status === 'TOMADO' ? await confirmarDose(dose.id) : status;
-    if (status !== 'TOMADO') await updateDoseStatus(dose.id, status);
+    await updateDoseStatus(dose.id, status);
     await carregarHistorico();
     const textos: Record<StatusDose, string> = {
       TOMADO: 'registrado como tomado',
       PULADO: 'registrado como pulado',
       PENDENTE: 'voltou para pendente',
-      ATRASADO: 'registrado como tomado com atraso',
+      ATRASADO: 'marcado como atrasado',
     };
     avisar({
-      mensagem: `${dose.medicamento_nome} ${textos[salvo]}.`,
-      tipo: salvo === 'TOMADO' || salvo === 'ATRASADO' ? 'sucesso' : 'info',
+      mensagem: `${dose.medicamento_nome} ${textos[status]}.`,
+      tipo: status === 'TOMADO' ? 'sucesso' : 'info',
       acao: {
         label: 'Desfazer',
         onPress: async () => {
-          await restaurarDose(dose);
+          await updateDoseStatus(dose.id, dose.status);
           await carregarHistorico();
         },
       },
@@ -179,7 +176,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ navigation }) => {
         <View style={styles.metricsRow}>
           {[
             { label: 'Tomadas', value: metrics.tomadas, bg: '#E8FDF3', border: '#86EFAC', dot: '#10B981', text: '#065F46' },
-            { label: 'Com atraso', value: metrics.comAtraso, bg: '#FEF9C3', border: '#FDE047', dot: '#F59E0B', text: '#92400E' },
+            { label: 'Atrasadas', value: metrics.comAtraso, bg: '#FEF9C3', border: '#FDE047', dot: '#F59E0B', text: '#92400E' },
             { label: 'Puladas', value: metrics.puladas, bg: '#FEE2E2', border: '#FCA5A5', dot: '#EF4444', text: '#991B1B' },
           ].map((m) => (
             <View

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../theme/themeContext';
 import { NomeRemedio } from '../components/NomeRemedio';
 import { useFeedback } from '../components/FeedbackProvider';
-import { getMedicamentosAtivos, excluirMedicamento, aoAlterarDoses, MedicamentoComHorarios } from '../database/sqlite';
+import { getMedicamentosAtivos, excluirMedicamento, MedicamentoComHorarios } from '../database/sqlite';
 import { triggerAutoSync } from '../services/supabase';
 import { PillGraphic } from '../components/PillGraphic';
 import { CustomButton } from '../components/CustomButton';
@@ -48,9 +48,6 @@ export const MedicationsScreen: React.FC<MedicationsScreenProps> = ({ navigation
       carregar();
     }, [carregar])
   );
-
-  // Medications arriving from the cloud backup while this screen is open
-  useEffect(() => aoAlterarDoses(carregar), [carregar]);
 
   const remover = async (med: MedicamentoComHorarios) => {
     await excluirMedicamento(med.id);
@@ -140,32 +137,18 @@ export const MedicationsScreen: React.FC<MedicationsScreenProps> = ({ navigation
                 </View>
               </View>
 
-              <View style={styles.actionsRow}>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('EditMedication', { medicamentoId: med.id })}
-                  style={[styles.actionButton, { borderColor: colors.primaryBorder, backgroundColor: colors.primaryLight }]}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Editar ${med.nome}`}
-                >
-                  <Feather name="edit-2" size={18} color={colors.primaryDark} />
-                  <Text style={[styles.actionText, { color: colors.primaryDark, fontSize: typography.body.fontSize }]}>
-                    Editar
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleExcluir(med)}
-                  style={[styles.actionButton, { borderColor: colors.statusSkippedBorder, backgroundColor: colors.statusSkippedBg }]}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Excluir ${med.nome}`}
-                >
-                  <Feather name="trash-2" size={18} color={colors.statusSkipped} />
-                  <Text style={[styles.actionText, { color: colors.statusSkipped, fontSize: typography.body.fontSize }]}>
-                    Excluir
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={() => handleExcluir(med)}
+                style={[styles.deleteButton, { borderColor: colors.statusSkippedBorder, backgroundColor: colors.statusSkippedBg }]}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Excluir ${med.nome}`}
+              >
+                <Feather name="trash-2" size={18} color={colors.statusSkipped} />
+                <Text style={[styles.deleteText, { color: colors.statusSkipped, fontSize: typography.body.fontSize }]}>
+                  Excluir
+                </Text>
+              </TouchableOpacity>
             </View>
           ))
         )}
@@ -242,22 +225,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flexShrink: 1,
   },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
-  actionButton: {
-    flex: 1,
+  deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    marginTop: 14,
     minHeight: 48,
     borderRadius: 14,
     borderWidth: 1,
   },
-  actionText: {
+  deleteText: {
     fontWeight: '700',
   },
 });

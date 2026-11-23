@@ -1,23 +1,14 @@
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, User } from '@supabase/supabase-js';
-import { HistoricoDose, HorarioMedicamento, Medicamento, PerfilUsuario } from '../types';
+import { PerfilUsuario } from '../types';
 import {
   getPerfilUsuario,
   getMedicamentos,
   updatePerfilUsuario,
   getAgendaLembretes,
   aoAlterarDoses,
-  getHorariosParaNuvem,
-  getDosesParaNuvem,
-  marcarDosesSincronizadas,
-  getFotosParaNuvem,
-  marcarFotoSincronizada,
-  definirFotoRestaurada,
-  restaurarDadosDaNuvem,
-  lerCarimbo,
 } from '../database/sqlite';
-import { baixarFoto, lerFoto } from './fotos';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -56,19 +47,14 @@ export const supabase = isConfigured
     })
   : null;
 
-if (supabase) {
+// Only refresh the session token while the app is in the foreground (Supabase's RN recommendation)
+if (supabase && Platform.OS !== 'web') {
   AppState.addEventListener('change', (estado) => {
-    // Only refresh the session token while the app is in the foreground (Supabase's RN
-    // recommendation; the browser handles it on its own)
-    if (Platform.OS !== 'web') {
-      if (estado === 'active') supabase.auth.startAutoRefresh();
-      else supabase.auth.stopAutoRefresh();
-    }
     if (estado === 'active') {
+      supabase.auth.startAutoRefresh();
       sincronizarDosesNuvem();
-      // Changes saved while offline go up now, and what was saved on another device comes down
-      enviarRotinaNuvem();
-      baixarRotinaNuvem();
+    } else {
+      supabase.auth.stopAutoRefresh();
     }
   });
 }
@@ -78,27 +64,6 @@ export interface AuthUserState {
   id: string | null;
   isLoggedIn: boolean;
 }
-
-const CADASTRO_RECUSADO =
-  'Não foi possível criar a conta com esses dados. Se você já tem cadastro, tente entrar.';
-const MUITAS_TENTATIVAS = 'Muitas tentativas. Aguarde alguns minutos e tente de novo.';
-const ERRO_GENERICO = 'Não foi possível concluir agora. Verifique sua internet e tente de novo.';
-
-const MENSAGENS_ERRO_AUTH: Record<string, string> = {
-  invalid_credentials: 'E-mail ou senha incorretos.',
-  email_not_confirmed: 'Confirme seu e-mail antes de entrar. Veja sua caixa de entrada.',
-  user_already_exists: CADASTRO_RECUSADO,
-  email_exists: CADASTRO_RECUSADO,
-  weak_password: 'Essa senha é muito fraca. Tente misturar letras e números.',
-  email_address_invalid: 'Digite um e-mail válido.',
-  validation_failed: 'Confira o e-mail e a senha digitados.',
-  signup_disabled: 'No momento não é possível criar novas contas.',
-  over_request_rate_limit: MUITAS_TENTATIVAS,
-  over_email_send_rate_limit: MUITAS_TENTATIVAS,
-};
-
-const mensagemErroAuth = (error: { code?: string }) =>
-  (error.code && MENSAGENS_ERRO_AUTH[error.code]) || ERRO_GENERICO;
 
 /**
  * Criação de conta do usuário
@@ -127,7 +92,7 @@ export const registerUserAccount = async (
     });
 
     if (error) {
-      return { success: false, message: mensagemErroAuth(error) };
+      return { success: false, message: error.message };
     }
 
     await updatePerfilUsuario({ email, nome: nome || undefined });
@@ -140,7 +105,7 @@ export const registerUserAccount = async (
     };
   } catch (err: any) {
     console.warn('Erro ao registrar conta:', err);
-    return { success: false, message: ERRO_GENERICO };
+    return { success: false, message: err?.message || 'Erro inesperado ao criar conta.' };
   }
 };
 
@@ -164,35 +129,22 @@ export const loginUserAccount = async (
     });
 
     if (error) {
-      return { success: false, message: mensagemErroAuth(error) };
+      return { success: false, message: error.message };
     }
 
     // Bring the saved profile first: the sync below uploads the local one and would
     // otherwise erase the name and caregiver data saved from another device
     await updatePerfilUsuario({ email, ...(await buscarPerfilNuvem(data.user)) });
-    // Same for the medications, schedules and history (e.g. logging in on a new phone)
-    let recuperados = 0;
-    let falhouRecuperar = false;
-    try {
-      recuperados = await restaurarRotinaNuvem(data.user.id);
-    } catch (err) {
-      falhouRecuperar = true;
-      console.warn('[Conta] Não foi possível recuperar a cópia de segurança:', err);
-    }
     await triggerAutoSync();
 
     return {
       success: true,
-      message: falhouRecuperar
-        ? 'Você entrou na conta, mas não foi possível trazer seus remédios agora. Eles serão buscados de novo quando você abrir o app.'
-        : recuperados > 0
-          ? `Pronto, você entrou na sua conta. ${recuperados} ${recuperados === 1 ? 'remédio foi recuperado' : 'remédios foram recuperados'} com o histórico.`
-          : 'Pronto, você entrou na sua conta.',
+      message: 'Login realizado com sucesso! Seus dados foram sincronizados.',
       user: data.user,
     };
   } catch (err: any) {
     console.warn('Erro no login:', err);
-    return { success: false, message: ERRO_GENERICO };
+    return { success: false, message: err?.message || 'Erro inesperado ao realizar login.' };
   }
 };
 
@@ -301,214 +253,26 @@ export const triggerAutoSync = async (): Promise<void> => {
     });
     if (erroPerfil) console.log('[AutoSync] Supabase recusou o perfil:', erroPerfil.message);
 
-    // Upsert medicamentos. foto_caminho is only sent with a photo: a photo still being
-    // downloaded on a new phone must not erase the one in the backup.
-    const linhaMed = (m: Medicamento) => ({
-      id: m.id,
-      usuario_id: userId,
-      nome: m.nome,
-      forma_farmaceutica: m.forma_farmaceutica,
-      cor: m.cor,
-      foto_url: m.foto_url,
-      orientacoes_extras: m.orientacoes_extras,
-      criado_em: lerCarimbo(m.criado_em)?.toISOString() ?? null,
-    });
-    const comFoto = meds.filter(m => m.foto_url).map(m => ({ ...linhaMed(m), foto_caminho: caminhoFoto(userId, m.id) }));
-    const semFoto = meds.filter(m => !m.foto_url).map(linhaMed);
-    for (const lote of [comFoto, semFoto]) {
-      if (lote.length === 0) continue;
-      const { error: erroMeds } = await supabase.from('medicamentos').upsert(lote);
+    // Upsert medicamentos
+    if (meds.length > 0) {
+      const { error: erroMeds } = await supabase.from('medicamentos').upsert(
+        meds.map(m => ({
+          id: m.id,
+          usuario_id: userId,
+          nome: m.nome,
+          forma_farmaceutica: m.forma_farmaceutica,
+          cor: m.cor,
+          foto_url: m.foto_url,
+          orientacoes_extras: m.orientacoes_extras,
+        }))
+      );
       if (erroMeds) console.log('[AutoSync] Supabase recusou os medicamentos:', erroMeds.message);
     }
 
-    await enviarRotinaNuvem();
     await sincronizarDosesNuvem();
   } catch (err) {
     console.log('[AutoSync] Sincronização automática silenciosa em segundo plano:', err);
   }
-};
-
-// ---------------------------------------------------------------------------
-// Backup of the routine: schedules, dose history and photos
-//
-// Sent whenever something changes, so logging in on another phone brings everything back
-// (restaurarRotinaNuvem). Photos go to the private Storage bucket, one folder per user.
-// ---------------------------------------------------------------------------
-
-const BUCKET_FOTOS = 'fotos-medicamentos';
-const caminhoFoto = (userId: string, medicamentoId: string) => `${userId}/${medicamentoId}.jpg`;
-const TAMANHO_LOTE = 100;
-
-const emLotes = <T,>(itens: T[]) =>
-  Array.from({ length: Math.ceil(itens.length / TAMANHO_LOTE) }, (_, i) =>
-    itens.slice(i * TAMANHO_LOTE, (i + 1) * TAMANHO_LOTE)
-  );
-
-let enviandoRotina: Promise<void> | null = null;
-let enviarRotinaDeNovo = false;
-
-export const enviarRotinaNuvem = async (): Promise<void> => {
-  if (!supabase) return;
-
-  if (enviandoRotina) {
-    enviarRotinaDeNovo = true;
-    return enviandoRotina;
-  }
-
-  enviandoRotina = (async () => {
-    try {
-      const perfil = await getPerfilUsuario();
-      if (!perfil?.email) return;
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) return;
-      const userId = data.session.user.id;
-
-      if (Platform.OS !== 'web') {
-        for (const foto of await getFotosParaNuvem()) {
-          try {
-            const { error } = await supabase.storage
-              .from(BUCKET_FOTOS)
-              .upload(caminhoFoto(userId, foto.id), await lerFoto(foto.foto_url), { contentType: 'image/jpeg', upsert: true });
-            if (error) throw error;
-            await marcarFotoSincronizada(foto.id, foto.foto_url);
-          } catch (err) {
-            console.log('[Cópia de segurança] Não foi possível enviar uma foto:', err);
-          }
-        }
-      }
-
-      const horarios = await getHorariosParaNuvem();
-      for (const lote of emLotes(horarios)) {
-        const { error } = await supabase.from('horarios_medicamento').upsert(
-          lote.map((h) => ({
-            usuario_id: userId,
-            id: h.id,
-            medicamento_id: h.medicamento_id,
-            dosagem: h.dosagem,
-            hora_programada: h.hora_programada,
-            dias_da_semana: h.dias_da_semana || 'TODOS',
-            ativo: h.ativo,
-            criado_em: lerCarimbo(h.criado_em)?.toISOString() ?? null,
-          }))
-        );
-        if (error) throw error;
-      }
-
-      const doses = await getDosesParaNuvem();
-      const registradas = doses.filter((d) => d.status !== 'PENDENTE');
-      const pendentes = doses.filter((d) => d.status === 'PENDENTE');
-      for (const lote of emLotes(registradas)) {
-        const { error } = await supabase.from('historico_doses').upsert(
-          lote.map((d) => ({
-            usuario_id: userId,
-            id: d.id,
-            medicamento_id: d.medicamento_id,
-            horario_id: d.horario_id ?? null,
-            data_hora_prevista: d.data_hora_prevista,
-            data_hora_realizada: d.data_hora_realizada ?? null,
-            status: d.status,
-            observacao: d.observacao ?? null,
-            atualizado_em: lerCarimbo(d.atualizado_em)?.toISOString() ?? new Date().toISOString(),
-          }))
-        );
-        if (error) throw error;
-      }
-      // Back to pending ("Desfazer"): the backup must not keep the old record
-      for (const lote of emLotes(pendentes)) {
-        const { error } = await supabase
-          .from('historico_doses')
-          .delete()
-          .eq('usuario_id', userId)
-          .in('id', lote.map((d) => d.id));
-        if (error) throw error;
-      }
-      await marcarDosesSincronizadas(doses);
-    } catch (err) {
-      console.log('[Cópia de segurança] Não foi possível enviar a rotina:', err);
-    }
-  })();
-
-  await enviandoRotina;
-  enviandoRotina = null;
-  if (enviarRotinaDeNovo) {
-    enviarRotinaDeNovo = false;
-    await enviarRotinaNuvem();
-  }
-};
-
-/**
- * Downloads the backup of this account into the phone: medications, schedules, dose history
- * and photos. Returns how many medications were added here.
- */
-const restaurarRotinaNuvem = async (userId: string): Promise<number> => {
-  if (!supabase) return 0;
-  const cliente = supabase;
-
-  const buscarTudo = async <T,>(tabela: string): Promise<T[]> => {
-    const PAGINA = 1000; // Supabase's limit per request
-    const linhas: T[] = [];
-    for (let de = 0; ; de += PAGINA) {
-      const { data, error } = await cliente
-        .from(tabela)
-        .select('*')
-        .eq('usuario_id', userId)
-        .order('id')
-        .range(de, de + PAGINA - 1);
-      if (error) throw error;
-      linhas.push(...((data ?? []) as T[]));
-      if (!data || data.length < PAGINA) return linhas;
-    }
-  };
-
-  const [medicamentos, horarios, doses] = await Promise.all([
-    buscarTudo<Medicamento & { foto_caminho?: string | null }>('medicamentos'),
-    buscarTudo<HorarioMedicamento>('horarios_medicamento'),
-    buscarTudo<HistoricoDose>('historico_doses'),
-  ]);
-  if (medicamentos.length === 0) return 0;
-
-  const novos = await restaurarDadosDaNuvem({ medicamentos, horarios, doses });
-
-  if (Platform.OS !== 'web') {
-    for (const med of medicamentos) {
-      if (!med.foto_caminho || !novos.includes(med.id)) continue;
-      try {
-        const { data, error } = await cliente.storage.from(BUCKET_FOTOS).createSignedUrl(med.foto_caminho, 600);
-        if (error || !data) throw error;
-        await definirFotoRestaurada(med.id, await baixarFoto(data.signedUrl, med.id));
-      } catch (err) {
-        console.log('[Cópia de segurança] Não foi possível baixar uma foto:', err);
-      }
-    }
-  }
-  return novos.length;
-};
-
-let baixandoRotina: Promise<void> | null = null;
-
-/**
- * Brings what was saved from another device into this one. Runs when the app opens and
- * whenever it comes back to the screen; does nothing without an account.
- */
-export const baixarRotinaNuvem = (): Promise<void> => {
-  if (!supabase) return Promise.resolve();
-  const cliente = supabase;
-  if (!baixandoRotina) {
-    baixandoRotina = (async () => {
-      try {
-        const perfil = await getPerfilUsuario();
-        if (!perfil?.email) return;
-        const { data } = await cliente.auth.getSession();
-        if (!data.session) return;
-        await restaurarRotinaNuvem(data.session.user.id);
-      } catch (err) {
-        console.warn('[Cópia de segurança] Não foi possível buscar a rotina:', err);
-      } finally {
-        baixandoRotina = null;
-      }
-    })();
-  }
-  return baixandoRotina;
 };
 
 // ---------------------------------------------------------------------------
@@ -594,6 +358,5 @@ aoAlterarDoses(() => {
   if (timerDosesNuvem) clearTimeout(timerDosesNuvem);
   timerDosesNuvem = setTimeout(() => {
     sincronizarDosesNuvem();
-    enviarRotinaNuvem();
   }, 1000);
 });

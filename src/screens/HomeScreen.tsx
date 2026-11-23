@@ -18,11 +18,7 @@ import {
   getPerfilUsuario,
   getDosesDoDia,
   updateDoseStatus,
-  confirmarDose,
-  restaurarDose,
   snoozeDose,
-  prepararDoses,
-  aoAlterarDoses,
 } from '../database/sqlite';
 import { PillGraphic } from '../components/PillGraphic';
 import { StatusBadge } from '../components/StatusBadge';
@@ -52,13 +48,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       const user = await getPerfilUsuario();
       setPerfil(user);
 
-      // A new day may have started while the app was in the background
-      await prepararDoses();
       const doses = await getDosesDoDia();
       setDosesHoje(doses);
 
-      // Next dose = earliest one still waiting. Taken (on time or late) and skipped doses never show here.
-      const pending = doses.find(d => d.status === 'PENDENTE');
+      // Next dose = earliest one still waiting (pending or late). Taken/skipped doses never show here.
+      const pending = doses.find(d => d.status === 'PENDENTE' || d.status === 'ATRASADO');
       setProximaDose(pending || null);
     } catch (error) {
       console.error('Erro ao carregar dados da Home:', error);
@@ -80,9 +74,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     return () => sub.remove();
   }, [carregarDados]);
 
-  // Reload when the doses change behind the screen (e.g. medications arriving from the cloud backup)
-  useEffect(() => aoAlterarDoses(carregarDados), [carregarDados]);
-
   const onRefresh = async () => {
     setRefreshing(true);
     await carregarDados();
@@ -91,20 +82,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   // Heuristic 1 & 3: Visibility of system status + user freedom (take dose)
   const handleConfirmarDose = async (dose: DoseCompleta) => {
-    const status = await confirmarDose(dose.id);
+    await updateDoseStatus(dose.id, 'TOMADO');
     await carregarDados();
     avisar({
-      mensagem:
-        status === 'ATRASADO'
-          ? `${dose.medicamento_nome} registrado como tomado com atraso.`
-          : `${dose.medicamento_nome} registrado como tomado. Muito bem!`,
+      mensagem: `${dose.medicamento_nome} registrado como tomado. Muito bem!`,
       acao: { label: 'Desfazer', onPress: () => desfazerStatus(dose) },
     });
   };
 
-  // Restores the dose exactly as it was before the last change
+  // Restores the status the dose had before the last change
   const desfazerStatus = async (dose: DoseCompleta) => {
-    await restaurarDose(dose);
+    await updateDoseStatus(dose.id, dose.status);
     await carregarDados();
     avisar({ mensagem: 'Pronto, desfeito.', tipo: 'info' });
   };
@@ -123,19 +111,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   // Heuristic 3 & 5: tapping a dose opens an explicit confirmation instead of changing it directly
   const handleAlterarStatus = async (dose: DoseCompleta, status: StatusDose) => {
     setDoseSelecionada(null);
-    // "Tomei" is checked against the scheduled time (it may become "taken late")
-    const salvo = status === 'TOMADO' ? await confirmarDose(dose.id) : status;
-    if (status !== 'TOMADO') await updateDoseStatus(dose.id, status);
+    await updateDoseStatus(dose.id, status);
     await carregarDados();
     const mensagens: Record<StatusDose, string> = {
       TOMADO: `${dose.medicamento_nome} registrado como tomado.`,
       PULADO: `${dose.medicamento_nome} registrado como pulado.`,
       PENDENTE: `${dose.medicamento_nome} voltou para pendente.`,
-      ATRASADO: `${dose.medicamento_nome} registrado como tomado com atraso.`,
+      ATRASADO: `${dose.medicamento_nome} marcado como atrasado.`,
     };
     avisar({
-      mensagem: mensagens[salvo],
-      tipo: salvo === 'TOMADO' || salvo === 'ATRASADO' ? 'sucesso' : 'info',
+      mensagem: mensagens[status],
+      tipo: status === 'TOMADO' ? 'sucesso' : 'info',
       acao: { label: 'Desfazer', onPress: () => desfazerStatus(dose) },
     });
   };
