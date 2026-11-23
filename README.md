@@ -19,7 +19,7 @@ Navegação por abas: **Início · Histórico · Novo · Cuidador · Perfil**.
    - Card **"Próximo medicamento"** com ilustração do remédio (forma e cor), dose e horário:
      - **Confirmar dose**: registra como tomada no SQLite, com opção **Desfazer**.
      - **Soneca**: adia o lembrete em 15 minutos.
-   - Lista **"Hoje"** com o status de cada dose (*Tomado*, *Pendente*, *Atrasado*, *Pulado*), que pode ser corrigido com um toque.
+   - Lista **"Hoje"** com o status de cada dose (*Tomado*, *Com atraso*, *Pendente*, *Pulado*), que pode ser corrigido com um toque.
 
 3. **Cadastrar remédio (aba Novo)**: assistente em 4 etapas (**Remédio → Quando → Dicas → Conferir**)
    - Nome, forma (*Comprimido, Cápsula, Gotas, Xarope, Injeção, Pomada, Outro*) e cor da pílula (*Branco, Azul claro, Rosa, Amarelo, Azul escuro, Verde*).
@@ -29,13 +29,13 @@ Navegação por abas: **Início · Histórico · Novo · Cuidador · Perfil**.
    - Foto opcional da caixa do remédio pela câmera.
    - Aviso antes de sair sem salvar.
 
-4. **Meus remédios**: lista dos remédios cadastrados com horários e dias, e opção de remover.
+4. **Gerenciar medicamentos**: lista dos remédios cadastrados com horários e dias, com as opções **Editar** (abre o mesmo assistente de 4 etapas já preenchido) e **Excluir**. Ao editar, as doses já registradas continuam no histórico e os lembretes são refeitos.
 
 5. **Hora do remédio** (tela cheia): abre ao tocar no lembrete ou quando ele chega com o app aberto, com os botões **Tomei** e **Adiar**.
 
 6. **Histórico**
    - Navegação por mês.
-   - Resumo: **Tomadas**, **Atrasadas** e **Puladas**.
+   - Resumo: **Tomadas**, **Com atraso** e **Puladas** (veja [Registro das doses](#-registro-das-doses)).
    - Linha do tempo diária com cores e ícones de status, com opção de desfazer alterações.
 
 7. **Cuidador**
@@ -53,7 +53,7 @@ Navegação por abas: **Início · Histórico · Novo · Cuidador · Perfil**.
 10. **Perfil & Acessibilidade**
     - Tamanho do texto: **Normal**, **Grande** e **Maior**.
     - Modo de **alto contraste**.
-    - Conta opcional (e-mail e senha) via **Supabase**, que libera a cópia de segurança na nuvem e o aviso ao cuidador. O app funciona sem conta, e o login fica salvo entre aberturas do app.
+    - Conta opcional (e-mail e senha) via **Supabase**, que libera a cópia de segurança na nuvem e o aviso ao cuidador. O app funciona sem conta, e o login fica salvo entre aberturas do app. Ao entrar na conta em outro celular, os remédios, horários, histórico e fotos são recuperados.
     - Ajustes de lembretes no Android: teste de aviso, som e "Não perturbe", bateria e alarmes no horário exato.
 
 ---
@@ -66,6 +66,31 @@ Navegação por abas: **Início · Histórico · Novo · Cuidador · Perfil**.
 - No Android usa um canal de alarme com som próprio (`assets/sounds/`), gerado por `scripts/gerar-alarme.js`.
 
 > Lembretes não funcionam no **Expo Go** (SDK 53+). É preciso instalar o app (APK ou development build).
+
+---
+
+## ✅ Registro das doses
+
+O app mantém o histórico completo sozinho (`prepararDoses()` e `confirmarDose()`, em `src/database/sqlite.ts`):
+
+| Situação | Status |
+|---|---|
+| Confirmada até 30 min depois do horário | **Tomado** |
+| Confirmada mais de 30 min depois do horário (conta o horário original, mesmo com soneca) | **Com atraso** |
+| Sem confirmação quando o dia termina (e pelo menos 2 h depois do horário) | **Pulado**, com a observação *"Não confirmada"* |
+| Marcada como tomada mais de 12 h depois (correção do registro) | **Tomado**, sem hora, porque a hora real não é conhecida |
+
+- Os dias em que o app não foi aberto também entram no histórico (até 90 dias para trás).
+- Um remédio cadastrado no meio do dia não gera doses de horários que já passaram há mais de 1 hora.
+- No relatório, a adesão conta as doses tomadas no horário **e** com atraso.
+
+---
+
+## ☁️ Cópia de segurança
+
+Com conta conectada, o app envia para o Supabase os remédios, os horários, as doses já registradas e as fotos das caixas (bucket privado `fotos-medicamentos`, uma pasta por usuário). O envio acontece logo depois de cada alteração e quando o app volta para a tela, então o que foi feito sem internet sobe depois.
+
+Ao entrar na conta em outro celular (ou depois de reinstalar o app), tudo é baixado de volta (`restaurarRotinaNuvem()`, em `src/services/supabase.ts`). O que já existia no celular é mantido, e os lembretes são refeitos.
 
 ---
 
@@ -112,7 +137,7 @@ App (celular) ──doses dos próximos 7 dias──▶ Supabase (tabela doses_p
 
 - **Frontend:** React Native 0.86, **Expo SDK 57**, TypeScript, React Navigation 7.
 - **Armazenamento local:** SQLite via `expo-sqlite` (local-first, sem login obrigatório).
-- **Nuvem (opcional):** Supabase (Auth com sessão salva no `AsyncStorage` + tabelas `perfil_usuario`, `medicamentos` e `doses_pendentes`, todas com RLS).
+- **Nuvem (opcional):** Supabase (Auth com sessão salva no `AsyncStorage` + tabelas `perfil_usuario`, `medicamentos`, `horarios_medicamento`, `historico_doses` e `doses_pendentes`, todas com RLS, e Storage para as fotos).
 - **IA generativa:** Google Gemini (`gemini-3.8-flash`) via Supabase Edge Function. A chave nunca fica dentro do app.
 - **Aviso ao cuidador:** Edge Function agendada com `pg_cron` + `pg_net`, e envio de e-mail pela API do **Brevo**.
 - **Notificações:** `expo-notifications` (lembretes locais com ações e canal de alarme no Android).
@@ -164,7 +189,7 @@ Sem `.env` o app para logo ao abrir, em desenvolvimento, com uma mensagem dizend
 
 ### Configurar o Supabase
 
-1. Crie um projeto em [supabase.com](https://supabase.com) e rode `supabase/schema.sql` no **SQL Editor**. Pode rodar de novo a cada atualização, porque ele só cria o que ainda não existe.
+1. Crie um projeto em [supabase.com](https://supabase.com) e rode `supabase/schema.sql` no **SQL Editor**. Pode rodar de novo a cada atualização, porque ele só cria o que ainda não existe (inclusive o bucket de fotos `fotos-medicamentos`).
 2. Em **Authentication → Sign In / Providers → Email**, desligue o **Confirm email** para testes. Com ele ligado, o link do e-mail leva para `localhost`, a menos que a **Site URL** seja configurada.
 3. Coloque a URL e a chave pública (anon ou publishable) no `.env`.
 4. Publique o assistente de IA. A chave do Gemini é gerada em [Google AI Studio](https://aistudio.google.com) → **Get API key**, e `SEU-PROJETO` é a parte antes de `.supabase.co` na URL:
@@ -189,6 +214,17 @@ Sem `.env` o app para logo ao abrir, em desenvolvimento, com uma mensagem dizend
 
    3. Copie `supabase/cron.sql`, troque `SEU-PROJETO` e `SEU_CRON_SECRET` pelos valores reais e rode no **SQL Editor**. Não faça commit da versão preenchida.
 
+### Testes e qualidade de código
+
+```bash
+npm test            # testes unitários (Jest + jest-expo), pasta __tests__/
+npm run lint        # ESLint (regras do Expo para React Native + TypeScript)
+npm run typecheck   # verificação de tipos do TypeScript
+npm run format      # formata o código com Prettier
+```
+
+Os testes cobrem as regras de registro das doses (no horário, com atraso, não confirmada, dias sem abrir o app), a edição de remédios, o relatório de adesão, a validação dos dados do cuidador, a leitura da quantidade da dose e as respostas offline do assistente de IA, incluindo a orientação de emergência.
+
 ### Gerar o APK (Android)
 
 ```bash
@@ -212,9 +248,7 @@ Essas duas variáveis são públicas por natureza (ficam dentro do app) e quem p
 
 ## 🚧 Próximos passos
 
-- Marcar doses como **Atrasado** automaticamente.
-- **Editar** um remédio já cadastrado.
-- Sincronizar também o histórico de doses com a nuvem e restaurar os dados ao trocar de celular.
+- Sincronização em tempo real entre dois celulares usados ao mesmo tempo (hoje a cópia de segurança é pensada para trocar de aparelho).
 - Aviso ao cuidador por **WhatsApp Business** ou **SMS** (ficaram de fora pelo custo e pela verificação da empresa na Meta).
 - **Domínio próprio** para o e-mail do aviso não cair no spam.
 - E-mail de **"tudo certo"** quando o paciente confirmar uma dose depois de o cuidador já ter sido avisado.
