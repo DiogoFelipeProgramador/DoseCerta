@@ -6,6 +6,7 @@ import { supabase } from './supabase';
 
 // Offline knowledge base fallback matching mockups and common geriatric questions
 const OFFLINE_KNOWLEDGE: Record<string, string> = {
+  emergencia: "Isso pode ser uma situação de emergência. Procure um pronto-socorro agora ou ligue para o SAMU (192) e, se puder, avise alguém da família ou o seu cuidador. Se tomou remédio a mais ou por engano, você também pode ligar para o Disque-Intoxicação (0800 722 6001).",
   leite: "Em geral, o Losartana e a maioria dos remédios comuns de pressão não possuem interação prejudicial com leite. Contudo, alguns antibióticos e remédios para tireoide não devem ser tomados com leite. Na dúvida, tome sempre com um bom copo de água pura.",
   sono: "Medicamentos como Losartana e Metformina geralmente não causam sonolência. Já calmantes, antialérgicos e relaxantes musculares podem dar sono. Se sentir tontura ou sonolência excessiva, sente-se devagar e avise seu médico.",
   esqueci: "Se você esqueceu de tomar o remédio, tome assim que lembrar. Porém, se já estiver quase na hora da próxima dose, pule a dose esquecida e siga o horário normal. NUNCA tome duas doses juntas para compensar!",
@@ -34,6 +35,16 @@ export const consultarAssistenteIA = async (
 
   // Fallback / Offline heuristic response matching queries
   const perguntaLower = pergunta.toLowerCase();
+
+  // Same emergency rule as the online assistant (rule 6 of its instructions): stop and send to help
+  const SINAIS_EMERGENCIA = [
+    'dor no peito', 'aperto no peito', 'falta de ar', 'desmai', 'convuls', 'sangramento',
+    'inchaço na garganta', 'inchaço no rosto', 'boca inchada', 'fala enrolada', 'formigamento',
+    'tomei a mais', 'tomei demais', 'tomei duas vezes', 'dose a mais', 'por engano', 'intoxica',
+  ];
+  if (SINAIS_EMERGENCIA.some((sinal) => perguntaLower.includes(sinal))) {
+    return OFFLINE_KNOWLEDGE.emergencia;
+  }
 
   if (perguntaLower.includes('leite') || perguntaLower.includes('tomar esse remédio com leite')) {
     return OFFLINE_KNOWLEDGE.leite;

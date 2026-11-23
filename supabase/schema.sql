@@ -1,4 +1,4 @@
--- Tabelas usadas pela cópia de segurança opcional (src/services/supabase.ts → triggerAutoSync).
+-- Tabelas usadas pela cópia de segurança opcional e pelo aviso ao cuidador (src/services/supabase.ts).
 -- Rode no Supabase → SQL Editor. Cada usuário só enxerga e altera os próprios dados (RLS).
 
 create table if not exists public.perfil_usuario (
@@ -69,3 +69,58 @@ alter table public.doses_pendentes enable row level security;
 drop policy if exists "doses_proprias" on public.doses_pendentes;
 create policy "doses_proprias" on public.doses_pendentes
   for all using (auth.uid() = usuario_id) with check (auth.uid() = usuario_id);
+
+-- Backup of the routine, so logging in on another phone brings everything back
+-- (src/services/supabase.ts → enviarRotinaNuvem / restaurarRotinaNuvem).
+-- Dates of doses stay as the phone's local time ("YYYY-MM-DDTHH:mm:ss"), like in the app.
+alter table public.medicamentos add column if not exists foto_caminho text;
+
+create table if not exists public.horarios_medicamento (
+  usuario_id uuid not null references auth.users (id) on delete cascade,
+  id text not null,
+  medicamento_id text not null,
+  dosagem text not null,
+  hora_programada text not null,
+  dias_da_semana text default 'TODOS',
+  ativo boolean default true,
+  criado_em timestamptz,
+  primary key (usuario_id, id)
+);
+
+-- Only doses already registered (taken, taken late, skipped): pending ones are recreated
+-- from the schedules on the phone.
+create table if not exists public.historico_doses (
+  usuario_id uuid not null references auth.users (id) on delete cascade,
+  id text not null,
+  medicamento_id text not null,
+  horario_id text,
+  data_hora_prevista text not null,
+  data_hora_realizada text,
+  status text not null check (status in ('PENDENTE', 'TOMADO', 'ATRASADO', 'PULADO')),
+  observacao text,
+  atualizado_em timestamptz default now(),
+  primary key (usuario_id, id)
+);
+
+alter table public.horarios_medicamento enable row level security;
+alter table public.historico_doses enable row level security;
+
+drop policy if exists "horarios_proprios" on public.horarios_medicamento;
+create policy "horarios_proprios" on public.horarios_medicamento
+  for all using (auth.uid() = usuario_id) with check (auth.uid() = usuario_id);
+
+drop policy if exists "historico_proprio" on public.historico_doses;
+create policy "historico_proprio" on public.historico_doses
+  for all using (auth.uid() = usuario_id) with check (auth.uid() = usuario_id);
+
+-- Photos of the medication boxes: private bucket, each user only reaches the folder named
+-- with their own id ("<user id>/<medication id>.jpg").
+insert into storage.buckets (id, name, public)
+values ('fotos-medicamentos', 'fotos-medicamentos', false)
+on conflict (id) do nothing;
+
+drop policy if exists "fotos_proprias" on storage.objects;
+create policy "fotos_proprias" on storage.objects
+  for all to authenticated
+  using (bucket_id = 'fotos-medicamentos' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'fotos-medicamentos' and (storage.foldername(name))[1] = auth.uid()::text);

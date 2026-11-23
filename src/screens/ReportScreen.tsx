@@ -14,7 +14,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../theme/themeContext';
 import { NomeRemedio } from '../components/NomeRemedio';
 import { useFeedback } from '../components/FeedbackProvider';
-import { getRelatorioAdesao, getPerfilUsuario, RelatorioAdesao, RegistroDose } from '../database/sqlite';
+import {
+  getRelatorioAdesao,
+  getPerfilUsuario,
+  prepararDoses,
+  RelatorioAdesao,
+  RegistroDose,
+  MINUTOS_TOLERANCIA_ATRASO,
+} from '../database/sqlite';
 import { CustomButton } from '../components/CustomButton';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -61,14 +68,16 @@ const mesmoDia = (prevista: string, iso: string) => prevista.substring(0, 10) ==
 const descreverRegistro = (r: RegistroDose) => {
   switch (r.status) {
     case 'TOMADO':
-      if (!r.realizada) return 'tomou';
+    case 'ATRASADO': {
+      const tomou = r.status === 'ATRASADO' ? 'tomou com atraso' : 'tomou';
+      if (!r.realizada) return tomou;
       return mesmoDia(r.prevista, r.realizada)
-        ? `tomou às ${formatarHoraRealizada(r.realizada)}`
-        : `tomou em ${formatarDiaCurto(diaLocalDe(r.realizada))} às ${formatarHoraRealizada(r.realizada)}`;
+        ? `${tomou} às ${formatarHoraRealizada(r.realizada)}`
+        : `${tomou} em ${formatarDiaCurto(diaLocalDe(r.realizada))} às ${formatarHoraRealizada(r.realizada)}`;
+    }
     case 'PULADO':
-      return 'pulou';
-    case 'ATRASADO':
-      return 'atrasada';
+      // Marked by the app when the day ended without a confirmation
+      return r.observacao === 'Não confirmada' ? 'não confirmou' : 'pulou';
     default:
       return 'sem registro';
   }
@@ -82,19 +91,19 @@ const montarTextoRelatorio = (r: RelatorioAdesao, nomePaciente: string) => {
   linhas.push('');
   linhas.push(
     r.adesaoPercentual !== null
-      ? `Doses tomadas: ${r.tomadas} de ${r.totalPrevistas} (${r.adesaoPercentual}%)`
+      ? `Doses tomadas: ${r.tomadas + r.atrasadas} de ${r.totalPrevistas} (${r.adesaoPercentual}%)`
       : 'Nenhuma dose registrada no período.'
   );
-  if (r.atrasadas) linhas.push(`Atrasadas: ${r.atrasadas}`);
-  if (r.puladas) linhas.push(`Puladas: ${r.puladas}`);
+  if (r.atrasadas) linhas.push(`Tomadas com atraso (mais de ${MINUTOS_TOLERANCIA_ATRASO} min): ${r.atrasadas}`);
+  if (r.puladas) linhas.push(`Puladas ou não confirmadas: ${r.puladas}`);
   if (r.semRegistro) linhas.push(`Sem registro: ${r.semRegistro}`);
 
   for (const m of r.medicamentos) {
     const total = m.tomadas + m.atrasadas + m.puladas + m.semRegistro;
     linhas.push('');
     linhas.push(`• ${m.nome} — ${m.dosagem} às ${m.horarios.join(', ')}`);
-    linhas.push(`  Tomadas ${m.tomadas}/${total}` +
-      (m.atrasadas ? ` · Atrasadas ${m.atrasadas}` : '') +
+    linhas.push(`  Tomadas ${m.tomadas + m.atrasadas}/${total}` +
+      (m.atrasadas ? ` · Com atraso ${m.atrasadas}` : '') +
       (m.puladas ? ` · Puladas ${m.puladas}` : '') +
       (m.semRegistro ? ` · Sem registro ${m.semRegistro}` : ''));
     for (const reg of m.registros) {
@@ -135,6 +144,7 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
       let ativo = true;
       (async () => {
         try {
+          await prepararDoses();
           const [r, perfil] = await Promise.all([getRelatorioAdesao(dias), getPerfilUsuario()]);
           if (!ativo) return;
           setRelatorio(r);
@@ -163,8 +173,8 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
 
   const resumo = relatorio
     ? [
-        { label: 'Tomadas', value: relatorio.tomadas, bg: colors.statusTakenBg, border: colors.statusTakenBorder, text: '#065F46' },
-        { label: 'Atrasadas', value: relatorio.atrasadas, bg: colors.statusDelayedBg, border: colors.statusDelayedBorder, text: '#92400E' },
+        { label: 'No horário', value: relatorio.tomadas, bg: colors.statusTakenBg, border: colors.statusTakenBorder, text: '#065F46' },
+        { label: 'Com atraso', value: relatorio.atrasadas, bg: colors.statusDelayedBg, border: colors.statusDelayedBorder, text: '#92400E' },
         { label: 'Puladas', value: relatorio.puladas, bg: colors.statusSkippedBg, border: colors.statusSkippedBorder, text: '#991B1B' },
         { label: 'Sem registro', value: relatorio.semRegistro, bg: colors.statusPendingBg, border: colors.statusPendingBorder, text: colors.textSecondary },
       ]
@@ -223,7 +233,7 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                 <>
                   <Text style={[styles.bigNumber, { color: colors.primary }]}>{relatorio.adesaoPercentual}%</Text>
                   <Text style={[styles.headline, { color: colors.textPrimary, fontSize: typography.body.fontSize }]}>
-                    das doses foram tomadas ({relatorio.tomadas} de {relatorio.totalPrevistas})
+                    das doses foram tomadas ({relatorio.tomadas + relatorio.atrasadas} de {relatorio.totalPrevistas})
                   </Text>
                 </>
               ) : (
@@ -250,7 +260,7 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
             {/* Per medication */}
             {relatorio.medicamentos.map((m) => {
               const total = m.tomadas + m.atrasadas + m.puladas + m.semRegistro;
-              const pct = total > 0 ? Math.round((m.tomadas / total) * 100) : 0;
+              const pct = total > 0 ? Math.round(((m.tomadas + m.atrasadas) / total) * 100) : 0;
               return (
                 <View key={m.medicamento_id} style={[styles.card, styles.medCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                   <NomeRemedio nome={m.nome} style={[styles.medName, { color: colors.textPrimary, fontSize: typography.bodyBold.fontSize }]} />
@@ -261,7 +271,8 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({ navigation }) => {
                     <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: colors.statusTaken }]} />
                   </View>
                   <Text style={[styles.medStats, { color: colors.textPrimary, fontSize: typography.caption.fontSize + 1 }]}>
-                    Tomou {m.tomadas} de {total}
+                    Tomou {m.tomadas + m.atrasadas} de {total}
+                    {m.atrasadas ? ` · ${m.atrasadas} com atraso` : ''}
                     {m.puladas ? ` · pulou ${m.puladas}` : ''}
                     {m.semRegistro ? ` · ${m.semRegistro} sem registro` : ''}
                   </Text>

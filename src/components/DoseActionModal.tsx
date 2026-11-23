@@ -25,7 +25,8 @@ export const DoseActionModal: React.FC<DoseActionModalProps> = ({ dose, onClose,
 
   if (!dose) return null;
 
-  const jaRegistrada = dose.status === 'TOMADO' || dose.status === 'PULADO';
+  const jaRegistrada = dose.status !== 'PENDENTE';
+  const jaTomada = dose.status === 'TOMADO' || dose.status === 'ATRASADO';
 
   const escolher = (status: StatusDose) => {
     if (Platform.OS !== 'web') {
@@ -75,7 +76,7 @@ export const DoseActionModal: React.FC<DoseActionModalProps> = ({ dose, onClose,
         </Text>
 
         {/* Actions */}
-        {dose.status !== 'TOMADO' && (
+        {!jaTomada && (
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.primary }]}
             onPress={() => escolher('TOMADO')}
