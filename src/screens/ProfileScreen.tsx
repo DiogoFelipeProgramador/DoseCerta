@@ -48,7 +48,7 @@ const TAMANHOS_TEXTO: Array<{ scale: TextScale; label: string; previewSize: numb
   { scale: 'extra_grande', label: 'Maior', previewSize: 28 },
 ];
 
-const LINK_VIDEO_APRESENTACAO = 'https://www.youtube.com/watch?v=N11UcXfpweU';
+const LINK_VIDEO_APRESENTACAO = 'https://www.youtube.com/watch?v=lbSmOUL1Qh8';
 
 const haptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
   if (Platform.OS !== 'web') Haptics.impactAsync(style);
